@@ -192,7 +192,7 @@ function Forest({ rows, lo, hi }: { rows: Any[]; lo: number; hi: number }) {
   const W = 560, rowH = 44
   const x = (v: number) => 120 + ((v - lo) / (hi - lo)) * (W - 140)
   return (
-    <svg width={W} height={rows.length * rowH + 30} className="forest">
+    <svg viewBox={`0 0 ${W} ${rows.length * rowH + 30}`} width="100%" className="forest">
       <line x1={x(0)} x2={x(0)} y1={0} y2={rows.length * rowH + 6} stroke="#888" strokeDasharray="3 3" />
       {rows.map((r, i) => (
         <g key={i} transform={`translate(0 ${i * rowH + 22})`}>
@@ -306,7 +306,7 @@ function HoursTab({ t, d, id }: Any) {
           return (
             <tr key={r.topic} className={oob ? 'oob' : ''}>
               <td>{r.topic}</td><td>{r.current}</td>
-              <td style={{ width: 220 }}><input type="range" min={1} max={r.max + 3} value={v} onChange={(e) => setPlan({ ...plan, [r.topic]: +e.target.value })} /> <b>{v}</b>{oob && <div className="warn small">{t.bounds} [{r.min}–{r.max}]</div>}</td>
+              <td style={{ minWidth: 160 }}><input type="range" min={1} max={r.max + 3} value={v} onChange={(e) => setPlan({ ...plan, [r.topic]: +e.target.value })} /> <b>{v}</b>{oob && <div className="warn small">{t.bounds} [{r.min}–{r.max}]</div>}</td>
               <td className={r.delta > 0 ? 'up' : r.delta < 0 ? 'down' : ''}>{r.delta > 0 ? '+' : ''}{r.delta || ''}</td>
               <td><b>{r.recommended}</b></td><td>{r.range[0]}–{r.range[1]}</td>
               <td><button onClick={async () => setWhy(await j(`/why/hours?id=${id}&topic=${encodeURIComponent(r.topic)}`))}>{t.why}</button></td>

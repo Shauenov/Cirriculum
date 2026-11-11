@@ -33,3 +33,14 @@ td, th { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; 
 tr.oob { background:#fdecea55; }
 
 .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:8px; margin:8px 0; } .grid2 label { display:flex; justify-content:space-between; gap:8px; align-items:center; } .grid2 input { width:90px; }
+
+/* мобильный вид: таблицы прокручиваются внутри себя, страница не расширяется */
+main table { display:block; overflow-x:auto; max-width:100%; }
+main { overflow-x:hidden; }
+.forest { max-width:100%; height:auto; }
+@media (max-width: 640px) {
+  .app { padding:0 10px 32px; } .banner { margin:0 -10px; font-size:13px; }
+  h1 { font-size:18px; } nav button { padding:8px 9px; font-size:13px; }
+  .big { font-size:24px; } .heat .lbl { min-width:130px; } .modal .card { max-height:90vh; }
+  td, th { padding:5px 6px; } input[type=range] { width:120px; }
+}
