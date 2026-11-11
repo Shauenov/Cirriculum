@@ -43,17 +43,25 @@ export default function App() {
     } catch (e: Any) { setErr(String(e.message ?? e)); return false } finally { setBusy(false) }
   }, [])
 
-  const start = useCallback(async (p: Promise<Any>) => {
+  const start = useCallback(async (p: Promise<Any>, firstStep = 0) => {
     setBusy(true); setErr('')
     try {
       const r = await p
       setId(r.id); setQuality(r.quality); setSynthetic(r.synthetic)
-      setView('app'); setStep(0); window.scrollTo({ top: 0 })
+      setView('app'); setStep(firstStep); window.scrollTo({ top: 0 })
       await analyze(r.id)
     } catch (e: Any) { setErr(String(e.message ?? e)); setBusy(false) }
   }, [analyze])
 
   const demo = (n: string) => start(j(`/demo/${n}`, { method: 'POST' }))
+
+  // Глубокая ссылка для скриншотов и презентаций: ?demo=main&step=2 (шаг с 1)
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const d = q.get('demo')
+    if (d === 'main' || d === 'small') start(j(`/demo/${d}`, { method: 'POST' }), Math.max(0, Math.min(4, Number(q.get('step') ?? 1) - 1)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const upload = (files: FileList | File[]) => {
     const fd = new FormData()
     Array.from(files).forEach((f) => fd.append('files', f))
