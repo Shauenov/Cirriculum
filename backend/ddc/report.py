@@ -70,6 +70,25 @@ def _summary_template(res: dict, lang: str) -> str:
     return " ".join(parts)
 
 
+_LLM_CACHE: dict = {}
+
+
+def _nums(text: str) -> set:
+    import re
+    out = set()
+    for m in re.findall(r"\d+(?:[.,]\d+)?", text):
+        v = float(m.replace(",", "."))
+        out.add(round(v, 2))
+    return out
+
+
+def numbers_consistent(llm_text: str, source_text: str) -> bool:
+    """LLM ничего не считает: все числа в его тексте должны присутствовать в исходных цифрах (допускается округление до 1 знака)."""
+    src = _nums(source_text)
+    src |= {round(x, 1) for x in src} | {round(x) for x in src}
+    return all(n in src or round(n, 1) in src or round(n) in src for n in _nums(llm_text))
+
+
 def llm_summary(res: dict, lang: str, template: str) -> tuple[str, str]:
     """Возвращает (текст, источник). Без ключа или при сбое — шаблон."""
     key = os.environ.get("OPENROUTER_API_KEY")
@@ -81,10 +100,14 @@ def llm_summary(res: dict, lang: str, template: str) -> tuple[str, str]:
                    for c in res["textbooks"].get("comparisons", [])],
         hours=dict(total=res["hours"].get("total"), gain_pp=res["hours"].get("gain_pp"), gain_ci=res["hours"].get("gain_ci")),
     )
+    ck = (lang, template)
+    if ck in _LLM_CACHE:
+        return _LLM_CACHE[ck]
     prompt = ("Перепиши резюме для методсовета на языке: " + ("русском" if lang == "ru" else "казахском") +
               ". Используй ТОЛЬКО числа из JSON, ничего не вычисляй и не добавляй. Не используй причинные слова "
               "(«причиняет», «доказано»); пиши «разница с поправкой на уровень учеников и школы», всегда с интервалом; "
-              "при статусе insufficient пиши «Недостаточно данных для утверждения». Не обещай «разрешённых» перераспределений часов. "
+              "при статусе insufficient пиши «Недостаточно данных для утверждения», при tentative — «ориентировочно, мало школ»; "
+              "внутренние слова статусов не выводи. Для часов: если интервал включает 0, пиши «выигрыш не доказан». Не обещай «разрешённых» перераспределений часов. "
               "2–5 предложений.\nJSON:\n" + json.dumps(payload, ensure_ascii=False) + "\nЧерновик:\n" + template)
     body = json.dumps(dict(model=os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.5"),
                            messages=[{"role": "user", "content": prompt}], max_tokens=600)).encode()
@@ -93,7 +116,10 @@ def llm_summary(res: dict, lang: str, template: str) -> tuple[str, str]:
     try:
         with urllib.request.urlopen(req, timeout=25) as r:
             txt = json.loads(r.read())["choices"][0]["message"]["content"].strip()
-        return (txt, "llm") if txt else (template, "template")
+        if not txt or not numbers_consistent(txt, json.dumps(payload, ensure_ascii=False) + template):
+            return template, "template"
+        _LLM_CACHE[ck] = (txt, "llm")
+        return _LLM_CACHE[ck]
     except Exception:  # noqa: BLE001
         return template, "template"
 

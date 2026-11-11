@@ -242,3 +242,33 @@ def test_dif_on_synthetic_demo_flags_nothing(seed2026):
     d, ds = seed2026
     r = analyze_dif(ds, CFG)
     assert r["available"] and r["n_flagged"] <= 1      # в генераторе DIF не закладывался
+
+
+def test_anchor_linking_two_forms():
+    """Две формы, решаемые разными учениками, связаны якорными заданиями: общая шкала восстанавливается."""
+    from ddc.irt import fit_2pl, link_components
+    rng = np.random.default_rng(3)
+    N, J = 3000, 30
+    b = rng.normal(0, 1, J)
+    th = np.concatenate([rng.normal(-0.5, 1, N // 2), rng.normal(0.5, 1, N // 2)])
+    P = 1 / (1 + np.exp(-(th[:, None] - b[None, :])))
+    Y = (rng.random((N, J)) < P).astype(float)
+    # форма 1: задания 0..19, форма 2: задания 10..29, якоря 10..19
+    Y[: N // 2, 20:] = np.nan
+    Y[N // 2:, :10] = np.nan
+    M = pd.DataFrame(Y)
+    assert link_components(M) == 1
+    a_, bh = fit_2pl(Y)
+    assert np.corrcoef(bh, b)[0, 1] > 0.97
+    # без якорей: изолированные формы
+    Y2 = Y.copy()
+    Y2[N // 2:, 10:20] = np.nan
+    assert link_components(pd.DataFrame(Y2)) == 2
+
+
+def test_xlsx_import_roundtrip(tmp_path):
+    import io
+    df = pd.read_csv(io.StringIO(GOOD))
+    f = tmp_path / "results_long.xlsx"
+    df.to_excel(f, index=False)
+    assert build_dataset({"results_long.xlsx": f.read_bytes()}).quality.ok

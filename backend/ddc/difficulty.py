@@ -12,7 +12,7 @@ import pandas as pd
 
 from .config import Config
 from .data_io import Dataset
-from .irt import fit_2pl
+from .irt import fit_2pl, link_components
 from .panel import build_panel
 
 
@@ -90,6 +90,7 @@ def _irt_topics(ds: Dataset, cfg: Config, reps: int = 60):
 
 def analyze_difficulty(ds: Dataset, cfg: Config) -> dict:
     items = item_stats(ds, cfg)
+    comps = link_components(ds.results.pivot_table(index="student_pseudo_id", columns="task_id", values="score_frac", aggfunc="first"))
     bad = set(items.loc[items.flagged, "task_id"])
     panel_all = build_panel(ds)
     panel = build_panel(ds, exclude_tasks=bad)
@@ -123,7 +124,10 @@ def analyze_difficulty(ds: Dataset, cfg: Config) -> dict:
     heat_school = dict(columns=order, rows=[dict(school=s, values=[None if pd.isna(v) else float(v) for v in hs.loc[s, order]])
                                             for s in hs.index])
     items = items.merge(irt_items.rename(columns={"a": "irt_a", "b": "irt_b"}), on="task_id", how="left")
-    return dict(topics=topics, items=items.round(4).replace({np.nan: None}).to_dict("records"),
+    link_warning = (None if comps == 1 else
+                    f"Работы не связаны якорными заданиями или общими учениками ({comps} изолированных групп): "
+                    "IRT-сложности тем из разных групп несопоставимы. Добавьте якорные задания, общие для работ.")
+    return dict(link_components=comps, link_warning=link_warning, topics=topics, items=items.round(4).replace({np.nan: None}).to_dict("records"),
                 heatmap_textbook=heat_tb, heatmap_school=heat_school,
                 method=("Ранг и IRT-сложность: модель 2PL (маргинальный максимум правдоподобия), общая шкала способности "
                         "для всех заданий; сложность темы — среднее b её заданий, интервал — бутстреп по школам (учитывает выборку учеников и школ, но не выбор заданий). "

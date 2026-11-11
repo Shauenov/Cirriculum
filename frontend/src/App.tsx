@@ -38,18 +38,25 @@ export default function App() {
   const [hours, setHours] = useState<Any>(null)
   const [dif, setDif] = useState<Any>(null)
 
-  const load = async (p: Promise<Any>) => {
+  const analyze = async (rid: string) => {
     setBusy(true); setErr(''); setDiff(null); setTb(null); setHours(null); setDif(null)
+    try {
+      const [d, b, h, df] = await Promise.all([
+        j(`/analyze/difficulty?id=${rid}`), j(`/analyze/textbooks?id=${rid}`),
+        j(`/optimize/hours?id=${rid}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
+        j(`/analyze/dif?id=${rid}`),
+      ])
+      setDiff(d); setTb(b); setHours(h); setDif(df)
+      return true
+    } catch (e: Any) { setErr(String(e.message ?? e)); return false } finally { setBusy(false) }
+  }
+  const load = async (p: Promise<Any>) => {
+    setBusy(true); setErr('')
     try {
       const r = await p
       setId(r.id); setQuality(r.quality); setSynthetic(r.synthetic)
-      const [d, b, h, df] = await Promise.all([
-        j(`/analyze/difficulty?id=${r.id}`), j(`/analyze/textbooks?id=${r.id}`),
-        j(`/optimize/hours?id=${r.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
-        , j(`/analyze/dif?id=${r.id}`),
-      ])
-      setDiff(d); setTb(b); setHours(h); setDif(df); setTab(1)
-    } catch (e: Any) { setErr(String(e.message ?? e)) } finally { setBusy(false) }
+      if (await analyze(r.id)) setTab(1)
+    } catch (e: Any) { setErr(String(e.message ?? e)); setBusy(false) }
   }
   const demo = (n: string) => load(j(`/demo/${n}`, { method: 'POST' }))
   const upload = (files: FileList | null) => {
@@ -78,7 +85,7 @@ export default function App() {
       {busy && <div className="note busy">{t.loading}</div>}
       {err && <pre className="error">{err}</pre>}
       <main>
-        {tab === 0 && <DataTab t={t} demo={demo} upload={upload} quality={quality} busy={busy} />}
+        {tab === 0 && <DataTab t={t} demo={demo} upload={upload} quality={quality} busy={busy} id={id} reanalyze={analyze} />}
         {tab > 0 && tab < 5 && !id && <p className="note">{t.pick}</p>}
         {tab === 1 && diff && <DifficultyTab t={t} d={diff} dif={dif} />}
         {tab === 2 && tb && <TextbooksTab t={t} d={tb} id={id!} />}
@@ -91,7 +98,7 @@ export default function App() {
   )
 }
 
-function DataTab({ t, demo, upload, quality, busy }: Any) {
+function DataTab({ t, demo, upload, quality, busy, id, reanalyze }: Any) {
   return (
     <section>
       <div className="row">
@@ -101,6 +108,7 @@ function DataTab({ t, demo, upload, quality, busy }: Any) {
       <p className="muted">{t.or}</p>
       <input type="file" multiple accept=".csv,.xlsx,.xls" onChange={(e) => upload(e.target.files)} disabled={busy} />
       <p className="muted small">{t.uploadHint} <a href={`${API}/templates`}>{t.templates}</a></p>
+      {id && <Settings t={t} id={id} reanalyze={reanalyze} busy={busy} />}
       {quality && (
         <div className="card">
           <h3>{t.quality}</h3>
@@ -137,6 +145,8 @@ function DifficultyTab({ t, d, dif }: Any) {
         ))}
       </div>
       <p className="muted small">{d.method}</p>
+      {d.link_warning && <p className="warn">{d.link_warning}</p>}
+      <ItemsTable t={t} items={d.items} />
       {dif?.available && (
         <div className="card">
           <h3 style={{ marginTop: 0 }}>{t.difTitle}: {dif.n_flagged} / {dif.n_items}</h3>
@@ -376,5 +386,55 @@ function ValidationTab({ t }: Any) {
       )}
       {!tb && !hr.length && <p className="note">{t.valNone}</p>}
     </section>
+  )
+}
+
+function ItemsTable({ t, items }: Any) {
+  const [all, setAll] = useState(false)
+  const rows = (all ? items : items.filter((x: Any) => x.flagged)).slice(0, all ? 200 : 50)
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>{t.itemsTitle} <button onClick={() => setAll(!all)}>{all ? t.itemsFlagged : t.itemsAll}</button></h3>
+      {rows.length === 0 ? <p className="muted">{t.itemsNone}</p> : (
+        <div className="scroll"><table>
+          <thead><tr><th>task</th><th>{t.topic}</th><th>p</th><th>r_it</th><th>IRT a</th><th>IRT b</th><th></th></tr></thead>
+          <tbody>{rows.map((x: Any) => (
+            <tr key={x.task_id} className={x.flagged ? 'oob' : ''}><td>{x.task_id}</td><td>{x.topic}</td><td>{x.p_correct?.toFixed(2)}</td>
+              <td>{x.discrimination == null ? '—' : x.discrimination.toFixed(2)}</td><td>{x.irt_a?.toFixed(2)}</td><td>{x.irt_b?.toFixed(2)}</td><td className="warn small">{x.flags}</td></tr>
+          ))}</tbody>
+        </table></div>
+      )}
+    </div>
+  )
+}
+
+function Settings({ t, id, reanalyze, busy }: Any) {
+  const [cfg, setCfg] = useState<Any>(null)
+  const [draft, setDraft] = useState<Any>({})
+  const [msg, setMsg] = useState('')
+  useEffect(() => { j(`/config?id=${id}`).then((r) => { setCfg(r); setDraft(r.config) }) }, [id])
+  if (!cfg) return null
+  const keys = Object.keys(cfg.editable)
+  const apply = async () => {
+    const body: Any = {}
+    keys.forEach((k) => { if (draft[k] !== cfg.config[k]) body[k] = Number(draft[k]) })
+    if (!Object.keys(body).length) return
+    try {
+      const r = await j(`/config?id=${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      setCfg({ ...cfg, config: r.config }); setMsg(''); await reanalyze(id)
+    } catch (e: Any) { setMsg(String(e.message ?? e)) }
+  }
+  return (
+    <details className="card">
+      <summary>{t.settings}</summary>
+      <p className="muted small">{t.settingsNote}</p>
+      <div className="grid2">
+        {keys.map((k) => (
+          <label key={k} className="small">{k} <input type="number" step="any" min={cfg.editable[k][0]} max={cfg.editable[k][1]} value={draft[k] ?? ''} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} /></label>
+        ))}
+      </div>
+      {msg && <p className="bad">{msg}</p>}
+      <button className="primary" disabled={busy} onClick={apply}>{t.applySettings}</button>
+    </details>
   )
 }

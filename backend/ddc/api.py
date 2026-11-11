@@ -95,6 +95,33 @@ def validation():
     return out
 
 
+EDITABLE = {"confidence_level": (0.8, 0.99), "min_schools_per_textbook": (2, 60), "reliable_schools_per_textbook": (5, 100),
+            "hours_min_factor": (0.3, 1.0), "hours_max_factor": (1.0, 3.0), "hours_max_step": (1, 6), "bootstrap_reps": (20, 500),
+            "bad_item_discrimination": (0.0, 0.5), "fdr_alpha": (0.01, 0.2)}
+
+
+@app.get("/config")
+def get_config(id: str):
+    return dict(config=_get(id)["cfg"].to_dict(), editable={k: list(v) for k, v in EDITABLE.items()})
+
+
+@app.post("/config")
+def set_config(id: str, body: dict):
+    e = _get(id)
+    upd = {}
+    for k, v in body.items():
+        if k not in EDITABLE:
+            raise HTTPException(400, f"Параметр «{k}» нельзя менять.")
+        lo, hi = EDITABLE[k]
+        if not isinstance(v, (int, float)) or not lo <= v <= hi:
+            raise HTTPException(400, f"{k}: допустимо от {lo} до {hi}.")
+        upd[k] = type(getattr(e["cfg"], k))(v) if getattr(e["cfg"], k) is not None else int(v)
+    with LOCK:
+        e["cfg"] = Config(**{**e["cfg"].to_dict(), **upd})
+        e["cache"].clear()
+    return dict(config=e["cfg"].to_dict())
+
+
 @app.get("/health")
 def health():
     return dict(ok=True)

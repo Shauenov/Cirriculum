@@ -31,3 +31,5 @@ td, th { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; 
 .modal { position:fixed; inset:0; background:#0007; display:flex; align-items:center; justify-content:center; padding:16px; }
 .modal .card { max-width:640px; max-height:85vh; overflow:auto; }
 tr.oob { background:#fdecea55; }
+
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:8px; margin:8px 0; } .grid2 label { display:flex; justify-content:space-between; gap:8px; align-items:center; } .grid2 input { width:90px; }

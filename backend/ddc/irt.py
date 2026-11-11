@@ -72,3 +72,17 @@ def topic_irt(ds, bad_tasks=()):
     topic_of = r.drop_duplicates("task_id").set_index("section_or_topic" if False else "task_id").section_or_topic
     items["topic"] = items.task_id.map(topic_of)
     return items, M
+
+
+def link_components(M: pd.DataFrame) -> int:
+    """Число связных компонент в двудольном графе «ученик — задание». Если больше 1, шкалы сложности
+    заданий из разных компонент несопоставимы (нет якорных заданий / общих учеников)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    A = ~np.isnan(M.values)
+    n, m = A.shape
+    r, c = np.where(A)
+    G = coo_matrix((np.ones(len(r)), (r, c + n)), shape=(n + m, n + m))
+    k, labels = connected_components(G, directed=False)
+    used = np.unique(labels[np.concatenate([r, c + n])])
+    return int(len(used))

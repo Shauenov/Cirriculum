@@ -45,3 +45,14 @@ def test_endpoints_and_reports(client_id):
             r = c.get("/report", params={"id": i, "lang": lang, "fmt": fmt, "llm": "false"})
             assert r.status_code == 200 and len(r.content) > 5000
     assert c.get("/report", params={"id": i, "lang": "en"}).status_code == 400
+
+
+def test_config_edit_validates_and_invalidates_cache(client_id):
+    c, i = client_id
+    assert c.post("/config", params={"id": i}, json={"confidence_level": 5}).status_code == 400
+    assert c.post("/config", params={"id": i}, json={"seed": 1}).status_code == 400
+    r = c.post("/config", params={"id": i}, json={"min_schools_per_textbook": 4})
+    assert r.status_code == 200 and r.json()["config"]["min_schools_per_textbook"] == 4
+    tb = c.get("/analyze/textbooks", params={"id": i}).json()
+    assert all(x["status"] != "insufficient" for x in tb["comparisons"])    # порог снижен — метка исчезла
+    c.post("/config", params={"id": i}, json={"min_schools_per_textbook": 8})
