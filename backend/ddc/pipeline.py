@@ -2,6 +2,7 @@ from pathlib import Path
 
 from .config import Config
 from .data_io import build_dataset
+from .dif import analyze_dif
 from .difficulty import analyze_difficulty
 from .hours import analyze_hours
 from .textbooks import analyze_textbooks
@@ -21,4 +22,4 @@ def run_all(ds, cfg: Config | None = None) -> dict:
     tb = analyze_textbooks(ds, cfg)
     hours = analyze_hours(ds, cfg, diff)
     return dict(quality=ds.quality.to_dict(), synthetic=ds.synthetic, config=cfg.to_dict(),
-                difficulty=diff, textbooks=tb, hours=hours)
+                difficulty=diff, textbooks=tb, hours=hours, dif=analyze_dif(ds, cfg))

@@ -15,7 +15,7 @@ from pathlib import Path
 L = {
     "ru": dict(
         title="Аналитическая записка для методсовета", synth="СИНТЕТИЧЕСКИЕ ДАННЫЕ. Реальных школ и учеников нет.",
-        summary="Резюме", hard="Сложные для усвоения темы", tb="Сравнение учебников", hours="Сценарий распределения часов",
+        summary="Резюме", valid="Проверка метода", hard="Сложные для усвоения темы", tb="Сравнение учебников", hours="Сценарий распределения часов",
         limits="Ограничения", topic="Тема", diff="Индекс сложности", ci="Интервал", est="Оценка с поправкой, п.п.",
         naive="Наивная разница, п.п.", schools="Школ", status="Статус", cur="Сейчас", rec="Рекомендуется", rng="Диапазон",
         insufficient="Недостаточно данных для утверждения", gain="Ожидаемый прирост средней доли верных, п.п.",
@@ -24,7 +24,7 @@ L = {
     ),
     "kz": dict(
         title="Әдістемелік кеңеске арналған талдамалық жазба", synth="СИНТЕТИКАЛЫҚ ДЕРЕКТЕР. Нақты мектептер мен оқушылар жоқ.",
-        summary="Қорытынды", hard="Меңгеруге қиын тақырыптар", tb="Оқулықтарды салыстыру", hours="Сағаттарды бөлу сценарийі",
+        summary="Қорытынды", valid="Әдісті тексеру", hard="Меңгеруге қиын тақырыптар", tb="Оқулықтарды салыстыру", hours="Сағаттарды бөлу сценарийі",
         limits="Шектеулер", topic="Тақырып", diff="Күрделілік индексі", ci="Аралық", est="Түзетілген бағалау, п.т.",
         naive="Қарапайым айырма, п.т.", schools="Мектеп", status="Мәртебе", cur="Қазір", rec="Ұсынылады", rng="Диапазон",
         insufficient="Растау үшін деректер жеткіліксіз", gain="Дұрыс жауаптың орташа үлесінің күтілетін өсімі, п.т.",
@@ -98,6 +98,34 @@ def llm_summary(res: dict, lang: str, template: str) -> tuple[str, str]:
         return template, "template"
 
 
+def _validation_text(lang: str) -> str:
+    base = Path(__file__).resolve().parents[1]
+    try:
+        tb = json.loads((base / "validation_textbooks.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return ""
+    try:
+        hr = json.loads((base / "validation_hours.json").read_text(encoding="utf-8"))
+        rows = [r for r in hr if r["variant"] == "pooled_step1"]
+        best = sum(r["optimum_true_pp"] for r in rows) / max(len(rows), 1)
+        got = sum(r["gain_true_pp"] for r in rows) / max(len(rows), 1)
+    except Exception:  # noqa: BLE001
+        best = got = None
+    if lang == "ru":
+        txt = (f"Метод проверен на {tb['n_seeds']} синтетических наборах с известной истиной: интервалы модели накрывают "
+               f"истину в {tb['ci_coverage']} из {tb['n_seeds']} случаев, наивное сравнение называет не тот лучший учебник в "
+               f"{tb['naive_wrong']} из {tb['n_seeds']} (сценарий заложен генератором), ранговая корреляция сложности тем "
+               f"{tb['rho_irt_mean']:.2f}. Это проверка на симуляции, не доказательство работы в реальных школах; нужен пилот.")
+        if got is not None:
+            txt += (f" Для часов достижимый выигрыш в симуляции мал (в среднем {best:+.2f} п.п.), а выигрыш рекомендации "
+                    f"составил {got:+.2f} п.п.: сценарий часов носит иллюстративный характер.")
+    else:
+        txt = (f"Әдіс шындығы белгілі {tb['n_seeds']} синтетикалық жиында тексерілді: модель аралықтары шындықты "
+               f"{tb['n_seeds']}-тің {tb['ci_coverage']}-інде қамтиды; тақырып күрделілігінің рангтік корреляциясы {tb['rho_irt_mean']:.2f}. "
+               "Бұл симуляциядағы тексеру, нақты мектептерде жұмыс істейтінінің дәлелі емес; пилот қажет.")
+    return txt
+
+
 def build_blocks(res: dict, lang: str = "ru", use_llm: bool = True) -> dict:
     t = L[lang]
     tpl = _summary_template(res, lang)
@@ -117,7 +145,7 @@ def build_blocks(res: dict, lang: str = "ru", use_llm: bool = True) -> dict:
             h_rows.append([r["topic"], str(r["current"]), str(r["recommended"]), f"{r['range'][0]}–{r['range'][1]}"])
     limits = list(h.get("assumptions", [])) + ([tb["caveat"]] if tb.get("available") else [])
     return dict(t=t, summary=summary, summary_source=src, tops=tops, tb_rows=tb_rows, h_rows=h_rows, limits=limits,
-                synthetic=res.get("synthetic", False), hours_text=h.get("recommendation_text", ""),
+                synthetic=res.get("synthetic", False), hours_text=h.get("recommendation_text", ""), validation=_validation_text(lang),
                 gain=(f"{t['gain']}: {h['gain_pp']:+.2f} [{h['gain_ci'][0]:+.2f}; {h['gain_ci'][1]:+.2f}]" if h.get("available") else ""))
 
 
@@ -155,6 +183,9 @@ def to_docx(res: dict, lang: str = "ru", use_llm: bool = True) -> bytes:
     table([t["topic"], t["cur"], t["rec"], t["rng"]], b["h_rows"])
     if b["gain"]:
         doc.add_paragraph(b["gain"])
+    if b["validation"]:
+        doc.add_heading(t["valid"], 1)
+        doc.add_paragraph(b["validation"])
     doc.add_heading(t["limits"], 1)
     for s in b["limits"]:
         doc.add_paragraph(s, style="List Bullet")
@@ -209,6 +240,8 @@ def to_pdf(res: dict, lang: str = "ru", use_llm: bool = True) -> bytes:
     tbl([t["topic"], t["cur"], t["rec"], t["rng"]], b["h_rows"])
     if b["gain"]:
         el.append(Paragraph(b["gain"], body))
+    if b["validation"]:
+        el += [Paragraph(t["valid"], h1), Paragraph(b["validation"], body)]
     el.append(Paragraph(t["limits"], h1))
     for s in b["limits"]:
         el.append(Paragraph("• " + s, body))

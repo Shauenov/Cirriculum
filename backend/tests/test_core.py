@@ -217,3 +217,28 @@ def test_full_pipeline_runs_on_small_demo():
     res = run_all(load_demo("small"), Config(bootstrap_reps=40))
     assert res["hours"]["available"] and res["textbooks"]["available"]
     assert all("difficulty_irt" in t for t in res["difficulty"]["topics"])
+
+
+def test_dif_detects_injected_and_no_false_positives():
+    from ddc.dif import dif_from_matrix
+    rng = np.random.default_rng(1)
+    N, J = 2400, 30
+    th = rng.normal(size=N)
+    g = np.where(rng.random(N) < .5, "kz", "ru")
+    cl = rng.integers(0, 40, N).astype(str)
+    b = rng.normal(size=J)
+    bb = np.tile(b, (N, 1))
+    bb[np.ix_(g == "ru", [3, 11])] += 0.9
+    Y = (rng.random((N, J)) < 1 / (1 + np.exp(-(th[:, None] - bb)))).astype(float)
+    tab, _ = dif_from_matrix(Y, g, cl)
+    assert set(np.where(tab.flagged)[0]) == {3, 11}
+    Y0 = (rng.random((N, J)) < 1 / (1 + np.exp(-(th[:, None] - b[None, :])))).astype(float)
+    tab0, _ = dif_from_matrix(Y0, g, cl)
+    assert tab0.flagged.sum() == 0
+
+
+def test_dif_on_synthetic_demo_flags_nothing(seed2026):
+    from ddc.dif import analyze_dif
+    d, ds = seed2026
+    r = analyze_dif(ds, CFG)
+    assert r["available"] and r["n_flagged"] <= 1      # в генераторе DIF не закладывался

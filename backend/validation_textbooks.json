@@ -1,0 +1,147 @@
+{
+ "n_seeds": 15,
+ "ci_coverage": 15,
+ "robust_coverage": 15,
+ "naive_wrong": 11,
+ "rho_classic_mean": 0.9039126529792463,
+ "rho_classic_min": 0.7110343653634216,
+ "rho_irt_mean": 0.9137200235359831,
+ "rho_irt_min": 0.7670764828304892,
+ "per_seed": [
+  {
+   "seed": 1,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.9772344233319931,
+   "rho_irt": 0.9562186292818428
+  },
+  {
+   "seed": 2,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.9597212616235344,
+   "rho_irt": 0.9737317909903013
+  },
+  {
+   "seed": 3,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.7110343653634216,
+   "rho_irt": 0.7670764828304892
+  },
+  {
+   "seed": 4,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.9071817764981586,
+   "rho_irt": 0.8966738794730833
+  },
+  {
+   "seed": 5,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "C",
+   "true_best": "C",
+   "rho_classic": 0.9071817764981586,
+   "rho_irt": 0.9281975705483089
+  },
+  {
+   "seed": 6,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.9176896735232337,
+   "rho_irt": 0.8896686147896997
+  },
+  {
+   "seed": 7,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.8861659824480081,
+   "rho_irt": 0.8931712471313915
+  },
+  {
+   "seed": 8,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.8126107032724816,
+   "rho_irt": 0.8826633501063164
+  },
+  {
+   "seed": 9,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "C",
+   "true_best": "C",
+   "rho_classic": 0.9141870411815418,
+   "rho_irt": 0.900176511814775
+  },
+  {
+   "seed": 10,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.9352028352316922,
+   "rho_irt": 0.9352028352316922
+  },
+  {
+   "seed": 11,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.9422080999150758,
+   "rho_irt": 0.9807370556736849
+  },
+  {
+   "seed": 12,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "C",
+   "true_best": "C",
+   "rho_classic": 0.8896686147896997,
+   "rho_irt": 0.8581449237144743
+  },
+  {
+   "seed": 13,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.900176511814775,
+   "rho_irt": 0.9281975705483089
+  },
+  {
+   "seed": 14,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "C",
+   "true_best": "C",
+   "rho_classic": 0.9071817764981586,
+   "rho_irt": 0.9457107322567676
+  },
+  {
+   "seed": 15,
+   "ci_covers_truth": true,
+   "robust_covers_truth": true,
+   "naive_best": "A",
+   "true_best": "C",
+   "rho_classic": 0.99124495269876,
+   "rho_irt": 0.9702291586486097
+  }
+ ]
+}

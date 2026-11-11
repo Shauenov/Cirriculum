@@ -36,17 +36,19 @@ export default function App() {
   const [diff, setDiff] = useState<Any>(null)
   const [tb, setTb] = useState<Any>(null)
   const [hours, setHours] = useState<Any>(null)
+  const [dif, setDif] = useState<Any>(null)
 
   const load = async (p: Promise<Any>) => {
-    setBusy(true); setErr(''); setDiff(null); setTb(null); setHours(null)
+    setBusy(true); setErr(''); setDiff(null); setTb(null); setHours(null); setDif(null)
     try {
       const r = await p
       setId(r.id); setQuality(r.quality); setSynthetic(r.synthetic)
-      const [d, b, h] = await Promise.all([
+      const [d, b, h, df] = await Promise.all([
         j(`/analyze/difficulty?id=${r.id}`), j(`/analyze/textbooks?id=${r.id}`),
         j(`/optimize/hours?id=${r.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
+        , j(`/analyze/dif?id=${r.id}`),
       ])
-      setDiff(d); setTb(b); setHours(h); setTab(1)
+      setDiff(d); setTb(b); setHours(h); setDif(df); setTab(1)
     } catch (e: Any) { setErr(String(e.message ?? e)) } finally { setBusy(false) }
   }
   const demo = (n: string) => load(j(`/demo/${n}`, { method: 'POST' }))
@@ -78,11 +80,12 @@ export default function App() {
       <main>
         {tab === 0 && <DataTab t={t} demo={demo} upload={upload} quality={quality} busy={busy} />}
         {tab > 0 && tab < 5 && !id && <p className="note">{t.pick}</p>}
-        {tab === 1 && diff && <DifficultyTab t={t} d={diff} />}
+        {tab === 1 && diff && <DifficultyTab t={t} d={diff} dif={dif} />}
         {tab === 2 && tb && <TextbooksTab t={t} d={tb} id={id!} />}
         {tab === 3 && hours && <HoursTab t={t} d={hours} id={id!} />}
         {tab === 4 && id && <ReportTab t={t} id={id} lang={lang} />}
         {tab === 4 && !id && <p className="note">{t.pick}</p>}
+        {tab === 5 && <ValidationTab t={t} />}
       </main>
     </div>
   )
@@ -97,7 +100,7 @@ function DataTab({ t, demo, upload, quality, busy }: Any) {
       </div>
       <p className="muted">{t.or}</p>
       <input type="file" multiple accept=".csv,.xlsx,.xls" onChange={(e) => upload(e.target.files)} disabled={busy} />
-      <p className="muted small">{t.uploadHint}</p>
+      <p className="muted small">{t.uploadHint} <a href={`${API}/templates`}>{t.templates}</a></p>
       {quality && (
         <div className="card">
           <h3>{t.quality}</h3>
@@ -114,7 +117,7 @@ function DataTab({ t, demo, upload, quality, busy }: Any) {
   )
 }
 
-function DifficultyTab({ t, d }: Any) {
+function DifficultyTab({ t, d, dif }: Any) {
   const [showSchools, setShowSchools] = useState(false)
   const top = d.topics.slice(0, 3)
   const hm = d.heatmap_textbook
@@ -134,6 +137,15 @@ function DifficultyTab({ t, d }: Any) {
         ))}
       </div>
       <p className="muted small">{d.method}</p>
+      {dif?.available && (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>{t.difTitle}: {dif.n_flagged} / {dif.n_items}</h3>
+          {dif.flagged.length === 0 ? <p className="muted">{t.difNone}</p> : (
+            <table><tbody>{dif.flagged.map((f: Any) => <tr key={f.task_id}><td>{f.task_id}</td><td>{f.topic}</td><td>Δb = {f.delta_b.toFixed(2)}</td></tr>)}</tbody></table>
+          )}
+          <p className="muted small">{dif.note}</p>
+        </div>
+      )}
       {hm && (
         <>
           <h3>{t.heat}</h3>
@@ -321,6 +333,48 @@ function ReportTab({ t, id, lang }: Any) {
         <a className="btn" href={link('pdf')}>{t.download} PDF</a>
       </div>
       {rl === 'kz' && <p className="warn">{t.kzNote}</p>}
+    </section>
+  )
+}
+
+function ValidationTab({ t }: Any) {
+  const [v, setV] = useState<Any>(null)
+  useEffect(() => { j('/validation').then(setV).catch(() => setV({})) }, [])
+  if (!v) return <p className="note">…</p>
+  const tb = v.textbooks
+  const hr: Any[] = v.hours ?? []
+  const variants = Array.from(new Set(hr.map((r) => r.variant)))
+  const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / (a.length || 1)
+  return (
+    <section>
+      <h2>{t.valTitle}</h2>
+      <p className="muted">{t.valIntro}</p>
+      {tb && (
+        <div className="cards">
+          <div className="card"><div className="big">{tb.ci_coverage}/{tb.n_seeds}</div><div className="muted small">{t.valCover}</div></div>
+          <div className="card"><div className="big">{tb.robust_coverage}/{tb.n_seeds}</div><div className="muted small">{t.valRobust}</div></div>
+          <div className="card"><div className="big red">{tb.naive_wrong}/{tb.n_seeds}</div><div className="muted small">{t.valNaive}</div></div>
+          <div className="card"><div className="big">{tb.rho_irt_mean.toFixed(2)}</div><div className="muted small">{t.valRho}: IRT (min {tb.rho_irt_min.toFixed(2)}) · {tb.rho_classic_mean.toFixed(2)} (min {tb.rho_classic_min.toFixed(2)})</div></div>
+        </div>
+      )}
+      <p className="warn small">{t.valNaiveNote}</p>
+      {hr.length > 0 && (
+        <>
+          <h3>{t.valHours}</h3>
+          <table>
+            <thead><tr><th></th><th>tilt 0</th><th>tilt 0.5</th><th>tilt 1.0</th></tr></thead>
+            <tbody>{variants.map((vn) => (
+              <tr key={String(vn)}><td>{String(vn)}</td>{[0, 0.5, 1].map((tl) => {
+                const rows = hr.filter((r) => r.variant === vn && r.tilt === tl)
+                const g = mean(rows.map((r) => r.gain_true_pp))
+                return <td key={tl} className={g < 0 ? 'down' : ''}>{g >= 0 ? '+' : ''}{g.toFixed(3)} п.п. ({t.valBest} +{mean(rows.map((r) => r.optimum_true_pp)).toFixed(3)})</td>
+              })}</tr>
+            ))}</tbody>
+          </table>
+          <p className="muted small">{t.valHoursNote}</p>
+        </>
+      )}
+      {!tb && !hr.length && <p className="note">{t.valNone}</p>}
     </section>
   )
 }

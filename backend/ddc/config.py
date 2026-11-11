@@ -19,6 +19,8 @@ class Config:
     hours_min_factor: float = 0.6
     hours_max_factor: float = 1.5
     hours_abs_min: int = 2
+    hours_pool: bool = True             # полное сжатие отдачи к линии «сложность → отдача»
+    hours_max_step: int | None = 1      # максимум изменения часов по теме относительно плана
     bootstrap_reps: int = 200
     seed: int = 2026
     fdr_alpha: float = 0.05

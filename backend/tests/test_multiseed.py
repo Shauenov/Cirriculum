@@ -14,6 +14,9 @@ CFG = Config(bootstrap_reps=20)
 
 @pytest.mark.slow
 def test_15_seeds(tmp_path_factory):
+    import json
+    from pathlib import Path
+    per_seed = []
     cover = naive_wrong = rcover = 0
     rhos, irt_rhos = [], []
     for seed in range(1, 16):
@@ -35,6 +38,15 @@ def test_15_seeds(tmp_path_factory):
         irt = {x["topic"]: x["difficulty_irt"] for x in diff["topics"]}
         irt_rhos.append(spearmanr([irt[n] for n in names.index], [tt[names[n]] for n in names.index]).statistic)
         rhos.append(spearmanr([est[n] for n in names.index], [tt[names[n]] for n in names.index]).statistic)
+        per_seed.append(dict(seed=seed, ci_covers_truth=bool(all(comp[t]["ci"][0] <= rel[t] <= comp[t]["ci"][1] for t in comp)),
+                             robust_covers_truth=bool(all(comp[t]["robust"]["ci"][0] <= rel[t] <= comp[t]["robust"]["ci"][1] for t in comp)),
+                             naive_best=max(naive_means, key=naive_means.get), true_best=max(tr, key=tr.get),
+                             rho_classic=float(rhos[-1]), rho_irt=float(irt_rhos[-1])))
+    (Path(__file__).resolve().parents[1] / "validation_textbooks.json").write_text(
+        json.dumps(dict(n_seeds=15, ci_coverage=int(cover), robust_coverage=int(rcover), naive_wrong=int(naive_wrong),
+                        rho_classic_mean=float(np.mean(rhos)), rho_classic_min=float(min(rhos)),
+                        rho_irt_mean=float(np.mean(irt_rhos)), rho_irt_min=float(min(irt_rhos)), per_seed=per_seed),
+                   ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"ROBUST_COVERAGE {rcover}/15  IRT_RHO mean={np.mean(irt_rhos):.2f} min={min(irt_rhos):.2f}")
     print(f"COVERAGE {cover}/15  NAIVE_WRONG {naive_wrong}/15  RHO mean={np.mean(rhos):.2f} min={min(rhos):.2f}")
     assert cover >= 13           # номинал 95%; с t-интервалами и малым числом школ ждём почти все

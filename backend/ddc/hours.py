@@ -44,7 +44,8 @@ def calibrate(panel: pd.DataFrame, topics: list[str]) -> dict[str, float]:
     return out
 
 
-def shrink(betas: dict[str, float], ses: dict[str, float], x: dict[str, float] | None = None) -> dict[str, float]:
+def shrink(betas: dict[str, float], ses: dict[str, float], x: dict[str, float] | None = None,
+           pool: bool = False) -> dict[str, float]:
     """Эмпирико-байесовское сжатие. Цель сжатия — линейная функция сложности темы (мета-регрессия),
     если сложность известна, иначе общее среднее. Отрицательные отдачи обнуляем (отдача неотрицательна)."""
     t = [k for k, v in betas.items() if not np.isnan(v)]
@@ -66,6 +67,8 @@ def shrink(betas: dict[str, float], ses: dict[str, float], x: dict[str, float] |
         resid = b - mu
         df = max(len(t) - 1, 1)
     tau2 = max(float(np.sum(resid ** 2) / df - np.mean(s2)), 0.0)
+    if pool:   # полное сжатие к линии «сложность → отдача»: меньше дисперсия, больше смещение
+        tau2 = 0.0
     w = tau2 / (tau2 + s2 + 1e-12)
     sh = mu + w * resid
     out = {k: max(float(v), 0.0) for k, v in zip(t, sh)}
@@ -102,6 +105,9 @@ def optimize_hours(beta: dict[str, float], current: dict[str, int], lo: dict[str
 def _bounds(cur: dict[str, int], cfg: Config):
     lo = {t: max(cfg.hours_abs_min, int(np.floor(v * cfg.hours_min_factor))) for t, v in cur.items()}
     hi = {t: max(lo[t], int(np.ceil(v * cfg.hours_max_factor))) for t, v in cur.items()}
+    if cfg.hours_max_step is not None:   # ограничение шага: не более N часов от текущего плана по теме
+        lo = {t: max(lo[t], cur[t] - cfg.hours_max_step) for t in cur}
+        hi = {t: min(hi[t], cur[t] + cfg.hours_max_step) for t in cur}
     return lo, hi
 
 
@@ -158,7 +164,7 @@ def analyze_hours(ds: Dataset, cfg: Config, difficulty: dict | None = None) -> d
         boots.append(row)
     bdf = pd.DataFrame(boots)
     ses = bdf.std(ddof=1).to_dict()
-    beta = shrink(beta_raw, ses, xdiff)
+    beta = shrink(beta_raw, ses, xdiff, cfg.hours_pool)
     rec = optimize_hours(beta, cur, lo, hi)
 
     def gain(plan, b):
@@ -166,7 +172,7 @@ def analyze_hours(ds: Dataset, cfg: Config, difficulty: dict | None = None) -> d
 
     gains, hours_draws, beta_draws = [], [], []
     for _, row in bdf.iterrows():
-        b = shrink(row.to_dict(), ses, xdiff)
+        b = shrink(row.to_dict(), ses, xdiff, cfg.hours_pool)
         beta_draws.append(b)
         p = optimize_hours(b, cur, lo, hi)
         hours_draws.append(p)
@@ -201,6 +207,9 @@ def analyze_hours(ds: Dataset, cfg: Config, difficulty: dict | None = None) -> d
             "Это сценарий при допущениях, а не «оптимальное решение». Литература даёт малую отдачу часов "
             "(порядка 0,025 SD на дополнительный недельный час для предмета в целом).",
             "Плановые часы ≠ фактические.",
+            "Проверка на симуляции (ground truth известна): достижимый выигрыш от перераспределения часов "
+            "мал (≈0,05–0,14 п.п.), рекомендации не превосходили текущий план; поэтому по умолчанию сценарий "
+            "консервативный — шаг не более 1 часа на тему, отдача сжата к линии «сложность → отдача».",
         ],
         method="Калибровка beta_t МНК с контролями → эмпирико-байесовское сжатие к линии «сложность темы → отдача» → жадное целочисленное распределение при фиксированной сумме и границах min/max; бутстреп по школам.",
         n_stable_changes=len(stable),

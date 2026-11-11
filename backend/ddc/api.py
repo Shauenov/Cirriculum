@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from .config import Config
 from .data_io import ImportError_, build_dataset
+from .dif import analyze_dif
 from .difficulty import analyze_difficulty
 from .explain import why_hours, why_textbook
 from .hours import analyze_hours, scenario
@@ -47,6 +48,51 @@ def _register(ds) -> dict:
     did = uuid.uuid4().hex[:10]
     STORE[did] = dict(ds=ds, cfg=Config(), cache={})
     return dict(id=did, quality=ds.quality.to_dict(), synthetic=ds.synthetic)
+
+
+def _csv(*lines):
+    return "\n".join(lines) + "\n"
+
+
+TEMPLATES = {
+    "results_long.csv": _csv(
+        "school_id,class,student_pseudo_id,task_id,section_or_topic,score,max_score,assessment_id,assessment_type,date",
+        "S001,7A,P000001,T01-01,Тема 1,1,1,AS-T01,summative,2026-10-15",
+        "S001,7A,P000002,T01-01,Тема 1,0,1,AS-T01,summative,2026-10-15"),
+    "students.csv": _csv("student_pseudo_id,school_id,class,grade,prior_score", "P000001,S001,7A,7,57", "P000002,S001,7A,7,62"),
+    "schools.csv": _csv("school_id,school_type,locality_type,instruction_language", "S001,urban,city,ru"),
+    "teaching.csv": _csv("school_id,class,grade,subject,textbook_id,teacher_experience_band", "S001,7A,7,algebra,A,3-10"),
+    "hours.csv": _csv("school_id,class,section_or_topic,planned_hours", "S001,7A,Тема 1,6"),
+    "README.txt": _csv(
+        "student_pseudo_id - случайный токен (не ИИН, не ФИО). Таблица соответствий остаётся в школе.",
+        "score/max_score - балл и максимум за задание; единица данных: ученик x работа x задание.",
+        "prior_score - входной уровень ученика (0-100). Без students и teaching сравнение учебников отключается."),
+}
+
+
+@app.get("/templates")
+def templates():
+    import io
+    import zipfile
+    bio = io.BytesIO()
+    with zipfile.ZipFile(bio, "w") as z:
+        for k, v in TEMPLATES.items():
+            z.writestr(k, "﻿" + v if k.endswith(".csv") else v)
+    return Response(bio.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="templates.zip"'})
+
+
+@app.get("/validation")
+def validation():
+    """Результаты проверки на синтетике с известной истиной (генерируются тестами/скриптами)."""
+    import json
+    from pathlib import Path
+    base = Path(__file__).resolve().parents[1]
+    out = {}
+    for key, fn in (("textbooks", "validation_textbooks.json"), ("hours", "validation_hours.json")):
+        f = base / fn
+        out[key] = json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+    return out
 
 
 @app.get("/health")
@@ -97,6 +143,15 @@ def _hours(e, min_factor=None, max_factor=None):
 def difficulty(id: str):
     with LOCK:
         return _difficulty(_get(id))
+
+
+@app.get("/analyze/dif")
+def dif(id: str):
+    with LOCK:
+        e = _get(id)
+        if "dif" not in e["cache"]:
+            e["cache"]["dif"] = analyze_dif(e["ds"], e["cfg"])
+        return e["cache"]["dif"]
 
 
 @app.get("/analyze/textbooks")
