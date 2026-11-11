@@ -22,7 +22,8 @@ from .textbooks import analyze_textbooks
 app = FastAPI(title="Data-Driven Curriculum")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 STORE: dict[str, dict] = {}
-LOCK = threading.Lock()
+LOCK = threading.Lock()          # защищает только сам словарь STORE
+MAX_STORE = 20                   # храним последние наборы, старые вытесняются (память)
 
 
 class Params(BaseModel):
@@ -44,9 +45,18 @@ def _cfg(entry, **kw) -> Config:
     return Config(**{**entry["cfg"].to_dict(), **{k: v for k, v in kw.items() if v is not None}})
 
 
-def _register(ds) -> dict:
+def _put(entry) -> str:
     did = uuid.uuid4().hex[:10]
-    STORE[did] = dict(ds=ds, cfg=Config(), cache={})
+    entry["lock"] = threading.Lock()   # расчёты по разным наборам не блокируют друг друга
+    with LOCK:
+        STORE[did] = entry
+        while len(STORE) > MAX_STORE:
+            STORE.pop(next(iter(STORE)))
+    return did
+
+
+def _register(ds) -> dict:
+    did = _put(dict(ds=ds, cfg=Config(), cache={}))
     return dict(id=did, quality=ds.quality.to_dict(), synthetic=ds.synthetic)
 
 
@@ -116,7 +126,7 @@ def set_config(id: str, body: dict):
         if not isinstance(v, (int, float)) or not lo <= v <= hi:
             raise HTTPException(400, f"{k}: допустимо от {lo} до {hi}.")
         upd[k] = type(getattr(e["cfg"], k))(v) if getattr(e["cfg"], k) is not None else int(v)
-    with LOCK:
+    with e["lock"]:
         e["cfg"] = Config(**{**e["cfg"].to_dict(), **upd})
         e["cache"].clear()
     return dict(config=e["cfg"].to_dict())
@@ -147,8 +157,7 @@ def demo(name: str):
         raise HTTPException(404, "Доступны наборы: main, small")
     if name in PRE:      # быстрый путь: анализ уже посчитан при старте сервера
         src = PRE[name]
-        did = uuid.uuid4().hex[:10]
-        STORE[did] = dict(ds=src["ds"], cfg=Config(), cache=dict(src["cache"]))
+        did = _put(dict(ds=src["ds"], cfg=Config(), cache=dict(src["cache"])))
         return dict(id=did, quality=src["ds"].quality.to_dict(), synthetic=True)
     return _register(load_demo(DEMO_SUB[name]))
 
@@ -176,14 +185,15 @@ def _hours(e, min_factor=None, max_factor=None):
 
 @app.get("/analyze/difficulty")
 def difficulty(id: str):
-    with LOCK:
-        return _difficulty(_get(id))
+    e = _get(id)
+    with e["lock"]:
+        return _difficulty(e)
 
 
 @app.get("/analyze/dif")
 def dif(id: str):
-    with LOCK:
-        e = _get(id)
+    e = _get(id)
+    with e["lock"]:
         if "dif" not in e["cache"]:
             e["cache"]["dif"] = analyze_dif(e["ds"], e["cfg"])
         return e["cache"]["dif"]
@@ -191,20 +201,30 @@ def dif(id: str):
 
 @app.get("/analyze/textbooks")
 def textbooks(id: str):
-    with LOCK:
-        return _textbooks(_get(id))
+    e = _get(id)
+    with e["lock"]:
+        return _textbooks(e)
+
+
+def _check_factors(mn, mx):
+    if (mn is not None and not 0.1 <= mn <= 1.0) or (mx is not None and not 1.0 <= mx <= 3.0):
+        raise HTTPException(400, "Границы часов: min_factor от 0,1 до 1, max_factor от 1 до 3.")
 
 
 @app.post("/optimize/hours")
 def hours(id: str, p: Params = Params()):
-    with LOCK:
-        return _hours(_get(id), p.min_factor, p.max_factor)[1]
+    _check_factors(p.min_factor, p.max_factor)
+    e = _get(id)
+    with e["lock"]:
+        return _hours(e, p.min_factor, p.max_factor)[1]
 
 
 @app.post("/optimize/scenario")
 def hours_scenario(id: str, body: Plan, min_factor: Optional[float] = None, max_factor: Optional[float] = None):
-    with LOCK:
-        d, r, cfg = _hours(_get(id), min_factor, max_factor)
+    _check_factors(min_factor, max_factor)
+    e = _get(id)
+    with e["lock"]:
+        d, r, cfg = _hours(e, min_factor, max_factor)
     if d is None:
         raise HTTPException(422, r.get("reason", "Часы недоступны"))
     return scenario(d, body.plan, cfg)
@@ -218,22 +238,27 @@ def _bundle(e) -> dict:
 
 @app.get("/why/hours")
 def why_h(id: str, topic: str):
-    with LOCK:
-        return why_hours(_bundle(_get(id)), topic)
+    e = _get(id)
+    with e["lock"]:
+        return why_hours(_bundle(e), topic)
 
 
 @app.get("/why/textbook")
 def why_t(id: str, textbook: str):
-    with LOCK:
-        return why_textbook(_bundle(_get(id)), textbook)
+    e = _get(id)
+    with e["lock"]:
+        return why_textbook(_bundle(e), textbook)
 
 
 @app.get("/report")
 def report(id: str, lang: str = "ru", fmt: str = "docx", llm: bool = True):
     if lang not in ("ru", "kz") or fmt not in ("docx", "pdf"):
         raise HTTPException(400, "lang: ru|kz, fmt: docx|pdf")
-    with LOCK:
-        res = _bundle(_get(id))
+    e = _get(id)
+    with e["lock"]:
+        res = _bundle(e)
+        res["dif"] = e["cache"].get("dif") or analyze_dif(e["ds"], e["cfg"])
+        e["cache"]["dif"] = res["dif"]
     data = to_docx(res, lang, llm) if fmt == "docx" else to_pdf(res, lang, llm)
     mt = ("application/vnd.openxmlformats-officedocument.wordprocessingml.document" if fmt == "docx"
           else "application/pdf")

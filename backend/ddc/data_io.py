@@ -17,8 +17,14 @@ REQUIRED_RESULTS = ["school_id", "class", "student_pseudo_id", "task_id",
                     "section_or_topic", "score", "max_score"]
 OPTIONAL_RESULTS = ["academic_year", "quarter", "subject", "assessment_type",
                     "assessment_id", "descriptor_id", "date"]
-FORBIDDEN_COLUMNS = re.compile(r"(^|_)(fio|iin|inn|фио|иин|surname|lastname|firstname|"
-                               r"full_?name|фамилия|имя|отчество|birth|dob)($|_)", re.I)
+# Подстроки в названии колонки, похожие на персональные данные. Проверяются все колонки,
+# кроме известных полей схемы (в них слово «name» не встречается, но список явный на всякий случай).
+FORBIDDEN_COLUMNS = re.compile(r"(fio|iin|inn|name|surname|фио|иин|фамил|имя|отчеств|birth|dob|рожд|"
+                               r"phone|телефон|email|e-mail|почта|address|адрес|passport|паспорт|snils)", re.I)
+SCHEMA_COLUMNS = {"school_id", "class", "academic_year", "quarter", "subject", "student_pseudo_id",
+                  "assessment_type", "assessment_id", "section_or_topic", "task_id", "descriptor_id", "score",
+                  "max_score", "date", "grade", "prior_score", "school_type", "locality_type", "instruction_language",
+                  "textbook_id", "teacher_experience_band", "topic_id", "planned_hours"}
 IIN_LIKE = re.compile(r"^\d{12}$")
 ROLES = ("results", "students", "schools", "teaching", "hours", "items")
 
@@ -92,7 +98,7 @@ def guess_role(name: str, df: pd.DataFrame) -> str | None:
 
 
 def _privacy_check(df: pd.DataFrame, name: str, rep: QualityReport):
-    bad = [c for c in df.columns if FORBIDDEN_COLUMNS.search(str(c))]
+    bad = [c for c in df.columns if str(c) not in SCHEMA_COLUMNS and FORBIDDEN_COLUMNS.search(str(c))]
     if bad:
         rep.errors.append(f"Файл «{name}»: колонки {bad} похожи на персональные данные (ФИО, ИИН, дата рождения). "
                           "Платформа не принимает такие поля: замените идентификатор на случайный токен "
@@ -203,6 +209,17 @@ def _validate_context(ds: Dataset, rep: QualityReport):
     else:
         for c in ("school_id", "class"):
             ds.teaching[c] = ds.teaching[c].astype(str)
+        # правило РК: один учебник на параллель по предмету в школе
+        t = ds.teaching.copy()
+        t["_par"] = t["grade"].astype(str) if "grade" in t else t["class"].str.extract(r"(\d+)", expand=False)
+        keys = ["school_id", "_par"] + (["subject"] if "subject" in t else [])
+        multi = t.groupby(keys).textbook_id.nunique()
+        multi = multi[multi > 1]
+        if len(multi):
+            ex = ", ".join(f"{k[0]} ({k[1]} кл.)" for k in multi.index[:5])
+            rep.warnings.append(f"teaching: в {len(multi)} школах в одной параллели указано несколько учебников ({ex}). "
+                                "По правилам выбора в параллели используется один учебник — проверьте данные "
+                                "(возможно, указан выбранный, а не фактически использованный учебник).")
     if ds.schools is not None:
         ds.schools["school_id"] = ds.schools.school_id.astype(str)
     if ds.hours is None:

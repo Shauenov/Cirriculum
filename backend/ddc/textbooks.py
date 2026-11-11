@@ -113,6 +113,8 @@ def analyze_textbooks(ds: Dataset, cfg: Config) -> dict:
         df = max(1, min(tbs[tb], tbs[ref]) - 1)
         tcrit = stats.t.ppf(1 - (1 - cfg.confidence_level) / 2, df)
         st, msg = _status(int(min(tbs[tb], tbs[ref])), cfg)
+        if not adjusted:   # без входного уровня это почти наивное сравнение: не выдаём его за «с поправкой»
+            st, msg = "insufficient", "Нет входного уровня учеников (файл students): поправка невозможна"
         res.append(dict(textbook=tb, vs=ref, estimate=float(b), ci=[float(b - tcrit * se), float(b + tcrit * se)],
                         ci_normal=[float(b - z * se), float(b + z * se)], df=int(df), se=float(se),
                         schools=int(tbs[tb]), schools_ref=int(tbs[ref]), status=st, status_text=msg,
@@ -142,27 +144,42 @@ def analyze_textbooks(ds: Dataset, cfg: Config) -> dict:
                      groups=panel.dropna(subset=[c for c in ("prior_z",) if c in panel])["school_id"]).fit(reml=True)
     topics = sorted(panel.topic.unique())
     names = list(mi.params.index)
-    cov_p = mi.cov_params()
-    rows, pvals = [], []
+    cov_p = mi.cov_params().loc[names, names].values
+    params = mi.params[names].values
+    status_of = {r["textbook"]: r["status"] for r in res}
+    rows, p_tot, p_dev = [], [], []
     for tb in others:
         main = f"{tb_term}[T.{tb}]"
+        Ls = []
         for t in topics:
-            k = f"{tb_term}[T.{tb}]:C(topic)[T.{t}]"
             L = pd.Series(0.0, index=names)
             L[main] = 1.0
+            k = f"{tb_term}[T.{tb}]:C(topic)[T.{t}]"
             if k in names:
                 L[k] = 1.0
-            est = float(L @ mi.params)
-            var = float(L.values @ cov_p.loc[names, names].values @ L.values)
-            se = np.sqrt(max(var, 1e-12))
-            p = 2 * (1 - stats.norm.cdf(abs(est / se)))
-            rows.append(dict(textbook=tb, topic=t, estimate=est * 100, se=se * 100, p=float(p)))
-            pvals.append(p)
-    for r, q in zip(rows, bh_fdr(pvals)):
-        r["q_fdr"] = float(q)
-        r["significant_fdr"] = bool(q < cfg.fdr_alpha)
+            Ls.append(L.values)
+        Lbar = np.mean(Ls, axis=0)
+        for t, L in zip(topics, Ls):
+            est = float(L @ params)
+            se = float(np.sqrt(max(L @ cov_p @ L, 1e-12)))
+            D = L - Lbar          # отклонение темы от среднего эффекта учебника = взаимодействие учебник × тема
+            dev = float(D @ params)
+            dse = float(np.sqrt(max(D @ cov_p @ D, 1e-12)))
+            p1 = 2 * (1 - stats.norm.cdf(abs(est / se)))
+            p2 = 2 * (1 - stats.norm.cdf(abs(dev / dse)))
+            rows.append(dict(textbook=tb, topic=t, estimate=est * 100, se=se * 100, p=float(p1),
+                             deviation=dev * 100, deviation_se=dse * 100, p_dev=float(p2),
+                             gated=status_of[tb] == "insufficient"))
+            p_tot.append(p1)
+            p_dev.append(p2)
+    for r, q1, q2 in zip(rows, bh_fdr(p_tot), bh_fdr(p_dev)):
+        r["q_fdr"], r["q_dev"] = float(q1), float(q2)
+        # при «недостаточно данных» по учебнику отличия по темам не утверждаем
+        r["significant_fdr"] = bool(q1 < cfg.fdr_alpha and not r["gated"])
+        r["significant_dev"] = bool(q2 < cfg.fdr_alpha and not r["gated"])
         r["ci"] = [r["estimate"] - z * r["se"], r["estimate"] + z * r["se"]]
-    rows.sort(key=lambda r: -abs(r["estimate"]))
+        r["dev_ci"] = [r["deviation"] - z * r["deviation_se"], r["deviation"] + z * r["deviation_se"]]
+    rows.sort(key=lambda r: -abs(r["deviation"]))
 
     return dict(
         available=True, reference=ref, adjusted=adjusted, table=table, comparisons=res, simpson=simpson,
@@ -172,7 +189,9 @@ def analyze_textbooks(ds: Dataset, cfg: Config) -> dict:
                 f"входной уровень школы (Mundlak) + язык + тип местности + стаж учителя; случайный эффект школы. "
                 f"Эталон — учебник {ref}. Интервалы: t-распределение, df = min(число школ) − 1. "
                 f"Проверка устойчивости: биномиальная logit-модель (GEE, поправка Манкла–ДеРуэна для малого числа школ). "
-                f"По темам: поправка Бенджамини–Хохберга (FDR)."),
+                f"По темам: разница с эталоном на теме и отклонение темы от среднего эффекта учебника "
+                f"(взаимодействие учебник × тема), поправка Бенджамини–Хохберга (FDR); при «недостаточно данных» "
+                f"по учебнику отличия по темам не утверждаются."),
         caveat=("Это разница с поправкой на наблюдаемые характеристики, а не причинный эффект учебника: "
                 "ненаблюдаемые различия школ могут оставаться. Сравнение возможно только межшкольное."),
     )

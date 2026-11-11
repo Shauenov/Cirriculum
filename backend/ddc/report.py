@@ -15,7 +15,7 @@ from pathlib import Path
 L = {
     "ru": dict(
         title="Аналитическая записка для методсовета", synth="СИНТЕТИЧЕСКИЕ ДАННЫЕ. Реальных школ и учеников нет.",
-        summary="Резюме", ranked="ранжирование", valid="Проверка метода", hard="Сложные для усвоения темы", tb="Сравнение учебников", hours="Сценарий распределения часов",
+        summary="Резюме", simpson="Тот же показатель внутри типов школ (наивные средние, %)", school_type="Тип школы", devs="Темы, где учебник отклоняется от своего среднего эффекта (FDR 5%)", dev="Отклонение, п.п.", none_dev="Значимых отклонений по темам нет.", dif="Различия заданий по языку обучения (DIF)", ranked="ранжирование", valid="Проверка метода", hard="Сложные для усвоения темы", tb="Сравнение учебников", hours="Сценарий распределения часов",
         limits="Ограничения", topic="Тема", diff="Индекс сложности", ci="Интервал", est="Оценка с поправкой, п.п.",
         naive="Наивная разница, п.п.", schools="Школ", status="Статус", cur="Сейчас", rec="Рекомендуется", rng="Диапазон",
         insufficient="Недостаточно данных для утверждения", gain="Ожидаемый прирост средней доли верных, п.п.",
@@ -24,7 +24,7 @@ L = {
     ),
     "kz": dict(
         title="Әдістемелік кеңеске арналған талдамалық жазба", synth="СИНТЕТИКАЛЫҚ ДЕРЕКТЕР. Нақты мектептер мен оқушылар жоқ.",
-        summary="Қорытынды", ranked="рангілеу", valid="Әдісті тексеру", hard="Меңгеруге қиын тақырыптар", tb="Оқулықтарды салыстыру", hours="Сағаттарды бөлу сценарийі",
+        summary="Қорытынды", simpson="Мектеп түрлері ішіндегі сол көрсеткіш (қарапайым орташа, %)", school_type="Мектеп түрі", devs="Оқулық өзінің орташа әсерінен ауытқитын тақырыптар (FDR 5%)", dev="Ауытқу, п.т.", none_dev="Тақырыптар бойынша маңызды ауытқу жоқ.", dif="Оқыту тілі бойынша тапсырмалар айырмасы (DIF)", ranked="рангілеу", valid="Әдісті тексеру", hard="Меңгеруге қиын тақырыптар", tb="Оқулықтарды салыстыру", hours="Сағаттарды бөлу сценарийі",
         limits="Шектеулер", topic="Тақырып", diff="Күрделілік индексі", ci="Аралық", est="Түзетілген бағалау, п.т.",
         naive="Қарапайым айырма, п.т.", schools="Мектеп", status="Мәртебе", cur="Қазір", rec="Ұсынылады", rng="Диапазон",
         insufficient="Растау үшін деректер жеткіліксіз", gain="Дұрыс жауаптың орташа үлесінің күтілетін өсімі, п.т.",
@@ -164,14 +164,33 @@ def build_blocks(res: dict, lang: str = "ru", use_llm: bool = True) -> dict:
         for c in tb["comparisons"]:
             tb_rows.append([f"{c['textbook']} {t['vs']} {c['vs']}",
                             t["insufficient"] if c["status"] == "insufficient" else f"{c['estimate']:+.1f} [{c['ci'][0]:+.1f}; {c['ci'][1]:+.1f}]",
-                            f"{c['naive_diff']:+.1f}", f"{c['schools']}/{c['schools_ref']}", c["status_text"] if lang == "ru" else c["status"]])
+                            f"{c['naive_diff']:+.1f}", f"{c['schools']}/{c['schools_ref']}", c["status_text"] if lang == "ru" else {"ok": "жеткілікті", "tentative": "болжамды: мектеп аз",
+                                                                         "insufficient": t["insufficient"]}[c["status"]]])
+    sim_head, sim_rows, dev_rows = [], [], []
+    if tb.get("available") and tb.get("simpson"):
+        sim_head = [t["school_type"]] + tb["simpson"]["columns"] + [t["schools"]]
+        for r in tb["simpson"]["rows"]:
+            sim_rows.append([r["school_type"]] + ["" if m is None else f"{m:.1f}" for m in r["means"]] + [" / ".join(map(str, r["schools"]))])
+    if tb.get("available"):
+        for e in tb.get("topic_effects", []):
+            if e.get("significant_dev"):
+                dev_rows.append([e["textbook"], e["topic"], f"{e['deviation']:+.1f} [{e['dev_ci'][0]:+.1f}; {e['dev_ci'][1]:+.1f}]"])
+    dif = res.get("dif") or {}
+    if dif.get("available"):
+        dif_text = (f"{dif['n_flagged']} / {dif['n_items']}. " + dif["note"]) if lang == "ru" else (
+            f"{dif['n_flagged']} / {dif['n_items']}. Белгіленген тапсырмаларды аударма сапасына тексерген жөн.")
+        if dif["flagged"]:
+            dif_text += " " + ", ".join(f"{x['task_id']} ({x['topic']}, Δb={x['delta_b']:+.2f})" for x in dif["flagged"][:10])
+    else:
+        dif_text = ""
     h_rows = []
     h = res["hours"]
     if h.get("available"):
         for r in h["rows"]:
             h_rows.append([r["topic"], str(r["current"]), str(r["recommended"]), f"{r['range'][0]}–{r['range'][1]}"])
     limits = list(h.get("assumptions", [])) + ([tb["caveat"]] if tb.get("available") else [])
-    return dict(t=t, summary=summary, summary_source=src, tops=tops, tb_rows=tb_rows, h_rows=h_rows, limits=limits,
+    return dict(t=t, summary=summary, summary_source=src, tops=tops, tb_rows=tb_rows, sim_head=sim_head, sim_rows=sim_rows,
+                dev_rows=dev_rows, dif_text=dif_text, h_rows=h_rows, limits=limits,
                 synthetic=res.get("synthetic", False), hours_text=h.get("recommendation_text", ""), validation=_validation_text(lang),
                 gain=(f"{t['gain']}: {h['gain_pp']:+.2f} [{h['gain_ci'][0]:+.2f}; {h['gain_ci'][1]:+.2f}]" if h.get("available") else ""))
 
@@ -205,6 +224,18 @@ def to_docx(res: dict, lang: str = "ru", use_llm: bool = True) -> bytes:
     doc.add_heading(t["tb"], 1)
     doc.add_paragraph(t["tb_intro"])
     table(["", t["est"], t["naive"], t["schools"], t["status"]], b["tb_rows"])
+    if b["sim_rows"]:
+        doc.add_paragraph(t["simpson"])
+        table(b["sim_head"], b["sim_rows"])
+    if b["tb_rows"]:
+        doc.add_paragraph(t["devs"])
+        if b["dev_rows"]:
+            table(["", t["topic"], t["dev"]], b["dev_rows"])
+        else:
+            doc.add_paragraph(t["none_dev"])
+    if b["dif_text"]:
+        doc.add_heading(t["dif"], 1)
+        doc.add_paragraph(b["dif_text"])
     doc.add_heading(t["hours"], 1)
     doc.add_paragraph(b["hours_text"])
     table([t["topic"], t["cur"], t["rec"], t["rng"]], b["h_rows"])
@@ -263,6 +294,17 @@ def to_pdf(res: dict, lang: str = "ru", use_llm: bool = True) -> bytes:
     tbl([t["topic"], t["diff"], t["ci"], "IRT b (" + t["ranked"] + ")"], b["tops"])
     el += [Paragraph(t["tb"], h1), Paragraph(t["tb_intro"], body), Spacer(1, 4)]
     tbl(["", t["est"], t["naive"], t["schools"], t["status"]], b["tb_rows"])
+    if b["sim_rows"]:
+        el.append(Paragraph(t["simpson"], body))
+        tbl(b["sim_head"], b["sim_rows"])
+    if b["tb_rows"]:
+        el.append(Paragraph(t["devs"], body))
+        if b["dev_rows"]:
+            tbl(["", t["topic"], t["dev"]], b["dev_rows"])
+        else:
+            el.append(Paragraph(t["none_dev"], body))
+    if b["dif_text"]:
+        el += [Paragraph(t["dif"], h1), Paragraph(b["dif_text"], body)]
     el += [Paragraph(t["hours"], h1), Paragraph(b["hours_text"], body), Spacer(1, 4)]
     tbl([t["topic"], t["cur"], t["rec"], t["rng"]], b["h_rows"])
     if b["gain"]:

@@ -125,7 +125,9 @@ def current_plan(panel: pd.DataFrame, topics: list[str]) -> dict[str, int]:
 
 
 def analyze_hours(ds: Dataset, cfg: Config, difficulty: dict | None = None) -> dict:
-    xdiff = {t['topic']: t['difficulty'] for t in difficulty['topics']} if difficulty else None
+    # сложность темы для мета-регрессии отдачи — та же IRT-шкала, по которой ранжируются темы
+    xdiff = ({t['topic']: t.get('difficulty_irt', t['difficulty']) for t in difficulty['topics']}
+             if difficulty else None)
     if ds.hours is None:
         return dict(available=False, reason="Нет файла hours (плановые часы по темам).")
     panel = build_panel(ds).dropna(subset=["planned_hours"])
@@ -133,6 +135,8 @@ def analyze_hours(ds: Dataset, cfg: Config, difficulty: dict | None = None) -> d
         return dict(available=False, reason="Нужен файл students с входным уровнем для калибровки отдачи часов.")
     topics = sorted(panel.topic.unique())
     cur = current_plan(panel, topics)
+    if not 0 < cfg.hours_min_factor <= 1 <= cfg.hours_max_factor:
+        return dict(available=False, reason="Границы часов: нужно 0 < min_factor ≤ 1 ≤ max_factor.")
     lo, hi = _bounds(cur, cfg)
     beta_raw = calibrate(panel, topics)
 
@@ -200,8 +204,9 @@ def analyze_hours(ds: Dataset, cfg: Config, difficulty: dict | None = None) -> d
                              "нагрузке. Основа для календарно-тематического плана учителя; не изменяет перечень "
                              "предметов, недельную нагрузку и цели обучения."),
         assumptions=[
-            f"Границы по теме: от {cfg.hours_min_factor:.0%} до {cfg.hours_max_factor:.0%} текущего плана — допущение "
-            "проекта, в нормативке пределов не найдено.",
+            f"Границы по теме: от {cfg.hours_min_factor:.0%} до {cfg.hours_max_factor:.0%} текущего плана"
+            + (f" и не более ±{cfg.hours_max_step} ч" if cfg.hours_max_step else "")
+            + " — допущение проекта, в нормативке пределов не найдено.",
             "Отдача часов калибруется по вариации плановых часов между классами; если трудным темам в школах дают "
             "больше часов, оценка смещена (обратная причинность).",
             "Это сценарий при допущениях, а не «оптимальное решение». Литература даёт малую отдачу часов "

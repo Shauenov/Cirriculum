@@ -41,6 +41,8 @@ def why_textbook(results: dict, textbook: str) -> dict:
                   if c["status"] != "insufficient" else "Недостаточно данных для утверждения"),
         data=f"школ: {c['schools']} против {c['schools_ref']} (эталон)",
         method=tb["method"], uncertainty=c["status_text"],
-        evidence=f"Наивная разница без поправки: {c['naive_diff']:+.1f} п.п.",
+        evidence=(f"Наивная разница без поправки: {c['naive_diff']:+.1f} п.п."
+                  + (f" Проверка logit-моделью: {c['robust']['estimate']:+.1f} п.п. "
+                     f"[{c['robust']['ci'][0]:+.1f}; {c['robust']['ci'][1]:+.1f}]." if c.get("robust") else "")),
         limits=[tb["caveat"]],
     )

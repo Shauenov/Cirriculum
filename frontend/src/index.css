@@ -44,3 +44,4 @@ main { overflow-x:hidden; }
   .big { font-size:24px; } .heat .lbl { min-width:130px; } .modal .card { max-height:90vh; }
   td, th { padding:5px 6px; } input[type=range] { width:120px; }
 }
+tr.hl td { background: color-mix(in srgb, var(--acc) 12%, transparent); }

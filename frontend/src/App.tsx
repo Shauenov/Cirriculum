@@ -82,6 +82,7 @@ export default function App() {
           <button key={i} className={i === tab ? 'on' : ''} onClick={() => setTab(i)}>{x}</button>
         ))}
       </nav>
+      {lang === 'kz' && <div className="note small">{t.ruNote}</div>}
       {busy && <div className="note busy">{t.loading}</div>}
       {err && <pre className="error">{err}</pre>}
       <main>
@@ -146,6 +147,7 @@ function DifficultyTab({ t, d, dif }: Any) {
       </div>
       <p className="muted small">{d.method}</p>
       {d.link_warning && <p className="warn">{d.link_warning}</p>}
+      {d.irt_warning && <p className="warn">{d.irt_warning}</p>}
       <ItemsTable t={t} items={d.items} />
       {dif?.available && (
         <div className="card">
@@ -246,9 +248,16 @@ function TextbooksTab({ t, d, id }: Any) {
         </>
       )}
       <h3>{t.topicEff}</h3>
-      <table><tbody>{d.topic_effects.slice(0, 8).map((e: Any, i: number) => (
-        <tr key={i}><td>{e.textbook}</td><td>{e.topic}</td><td>{e.estimate.toFixed(1)} [{e.ci[0].toFixed(1)}; {e.ci[1].toFixed(1)}]</td><td>{e.significant_fdr ? '✓' : ''}</td></tr>
-      ))}</tbody></table>
+      <p className="muted small">{t.topicEffNote}</p>
+      <table>
+        <thead><tr><th></th><th>{t.topic}</th><th>{t.devCol}</th><th>{t.diffCol}</th><th></th></tr></thead>
+        <tbody>{d.topic_effects.slice(0, 8).map((e: Any, i: number) => (
+          <tr key={i} className={e.significant_dev ? 'hl' : ''}><td>{e.textbook}</td><td>{e.topic}</td>
+            <td><b>{e.deviation >= 0 ? '+' : ''}{e.deviation.toFixed(1)}</b> [{e.dev_ci[0].toFixed(1)}; {e.dev_ci[1].toFixed(1)}]</td>
+            <td className="muted">{e.estimate >= 0 ? '+' : ''}{e.estimate.toFixed(1)}</td>
+            <td>{e.gated ? <span className="badge warn">{t.insufficient}</span> : e.significant_dev ? '✓' : ''}</td></tr>
+        ))}</tbody>
+      </table>
       <p className="muted small">{d.method}</p>
       {why && <Why t={t} w={why} close={() => setWhy(null)} />}
     </section>

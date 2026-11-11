@@ -56,3 +56,15 @@ def test_config_edit_validates_and_invalidates_cache(client_id):
     tb = c.get("/analyze/textbooks", params={"id": i}).json()
     assert all(x["status"] != "insufficient" for x in tb["comparisons"])    # порог снижен — метка исчезла
     c.post("/config", params={"id": i}, json={"min_schools_per_textbook": 8})
+
+
+def test_hours_bad_bounds_400(client_id):
+    c, i = client_id
+    assert c.post("/optimize/hours", params={"id": i}, json={"min_factor": 2.0, "max_factor": 1.0}).status_code == 400
+
+
+def test_small_demo_topic_effects_gated(client_id):
+    c, i = client_id
+    tb = c.get("/analyze/textbooks", params={"id": i}).json()
+    ins = {x["textbook"] for x in tb["comparisons"] if x["status"] == "insufficient"}
+    assert all(not e["significant_dev"] for e in tb["topic_effects"] if e["textbook"] in ins)

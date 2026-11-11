@@ -272,3 +272,48 @@ def test_xlsx_import_roundtrip(tmp_path):
     f = tmp_path / "results_long.xlsx"
     df.to_excel(f, index=False)
     assert build_dataset({"results_long.xlsx": f.read_bytes()}).quality.ok
+
+
+@pytest.mark.parametrize("col", ["student_name", "Name", "phone", "email", "дата_рождения", "Фамилия", "address"])
+def test_import_rejects_pii_like_columns(col):
+    bad = GOOD.replace("school_id,class,", f"school_id,{col},class,", 1)
+    bad = "\n".join([bad.splitlines()[0]] + [ln.replace("S1,", "S1,x,", 1).replace("S2,", "S2,x,", 1).replace("S3,", "S3,x,", 1)
+                                              for ln in bad.splitlines()[1:]]) + "\n"
+    with pytest.raises(ImportError_) as e:
+        imp(bad)
+    assert "персональные" in str(e.value)
+
+
+def test_two_textbooks_in_parallel_warns():
+    from ddc.pipeline import DEMO_DIR
+    fs = {p.name: p.read_bytes() for p in (DEMO_DIR / "small").glob("*.csv")}
+    t = pd.read_csv(io.BytesIO(fs["teaching.csv"]))
+    first = t.school_id.iloc[0]
+    t.loc[t.school_id == first, "textbook_id"] = ["A", "Z"][: (t.school_id == first).sum()]
+    fs["teaching.csv"] = t.to_csv(index=False).encode()
+    ds = build_dataset(fs)
+    assert any("несколько учебников" in w for w in ds.quality.warnings)
+
+
+def test_textbooks_without_prior_are_not_called_adjusted():
+    from ddc.pipeline import DEMO_DIR
+    fs = {p.name: p.read_bytes() for p in (DEMO_DIR / "small").glob("*.csv") if p.stem != "students"}
+    res = analyze_textbooks(build_dataset(fs), CFG)
+    assert not res["adjusted"]
+    assert all(c["status"] == "insufficient" for c in res["comparisons"])
+    assert not any(e["significant_fdr"] or e["significant_dev"] for e in res["topic_effects"])
+
+
+def test_interaction_finds_exactly_planted_topics(seed2026):
+    d, ds = seed2026
+    res = analyze_textbooks(ds, CFG)
+    names = ds.items.drop_duplicates("topic_id").set_index("section_or_topic").topic_id
+    found = {(e["textbook"], names[e["topic"]]) for e in res["topic_effects"] if e["significant_dev"]}
+    assert found == {("A", "T08"), ("C", "T09")}
+
+
+def test_hours_rejects_inverted_bounds(seed2026):
+    from ddc.hours import analyze_hours
+    d, ds = seed2026
+    r = analyze_hours(ds, Config(bootstrap_reps=10, hours_min_factor=1.2, hours_max_factor=1.1))
+    assert not r["available"]

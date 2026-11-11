@@ -124,10 +124,15 @@ def analyze_difficulty(ds: Dataset, cfg: Config) -> dict:
     heat_school = dict(columns=order, rows=[dict(school=s, values=[None if pd.isna(v) else float(v) for v in hs.loc[s, order]])
                                             for s in hs.index])
     items = items.merge(irt_items.rename(columns={"a": "irt_a", "b": "irt_b"}), on="task_id", how="left")
+    poly = ds.results.groupby("task_id").max_score.max()
+    irt_warning = None
+    if (poly > 1).mean() > 0.2 or ds.results.task_id.nunique() <= ds.results.section_or_topic.nunique():
+        irt_warning = ("Задания многобалльные или есть только итог работы: 2PL применена к доле баллов как приближение, "
+                       "IRT-сложности ориентировочные. Для точной шкалы нужны баллы по заданиям.")
     link_warning = (None if comps == 1 else
                     f"Работы не связаны якорными заданиями или общими учениками ({comps} изолированных групп): "
                     "IRT-сложности тем из разных групп несопоставимы. Добавьте якорные задания, общие для работ.")
-    return dict(link_components=comps, link_warning=link_warning, topics=topics, items=items.round(4).replace({np.nan: None}).to_dict("records"),
+    return dict(link_components=comps, link_warning=link_warning, irt_warning=irt_warning, topics=topics, items=items.round(4).replace({np.nan: None}).to_dict("records"),
                 heatmap_textbook=heat_tb, heatmap_school=heat_school,
                 method=("Ранг и IRT-сложность: модель 2PL (маргинальный максимум правдоподобия), общая шкала способности "
                         "для всех заданий; сложность темы — среднее b её заданий, интервал — бутстреп по школам (учитывает выборку учеников и школ, но не выбор заданий). "
