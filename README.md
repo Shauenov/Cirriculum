@@ -16,7 +16,7 @@ cd frontend && npm install && npm run dev        # http://localhost:5173
 ## Структура
 - `backend/ddc/` — ядро (импорт и валидация, сложность, учебники, часы, объяснимость, записка) и FastAPI (`/import`, `/analyze/difficulty`, `/analyze/textbooks`, `/optimize/hours`, `/optimize/scenario`, `/why/*`, `/report`).
 - `backend/demo_data/` — основной набор (60 школ) и `small/` (28 школ, резервный; на нём видна метка «Недостаточно данных»).
-- `frontend/` — React + Vite, пять экранов, переключатель RU/KZ.
+- `frontend/` — React + Vite: лендинг, пошаговый маршрут из 5 шагов с выводами простым языком, светлая/тёмная тема, RU/KZ, мобильный вид.
 - Параметры и пороги: `backend/ddc/config.py`. Пороги «мало школ» — допущение, не норматив.
 
 ## Формат входа
