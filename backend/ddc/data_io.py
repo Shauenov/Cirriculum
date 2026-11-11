@@ -100,7 +100,8 @@ def guess_role(name: str, df: pd.DataFrame) -> str | None:
 def _privacy_check(df: pd.DataFrame, name: str, rep: QualityReport):
     bad = [c for c in df.columns if str(c) not in SCHEMA_COLUMNS and FORBIDDEN_COLUMNS.search(str(c))]
     if bad:
-        rep.errors.append(f"Файл «{name}»: колонки {bad} похожи на персональные данные (ФИО, ИИН, дата рождения). "
+        cols = ", ".join(map(str, bad))
+        rep.errors.append(f"Файл «{name}»: колонки «{cols}» похожи на персональные данные (ФИО, ИИН, дата рождения). "
                           "Платформа не принимает такие поля: замените идентификатор на случайный токен "
                           "(таблица соответствий остаётся в школе).")
     for c in ("student_pseudo_id",):

@@ -99,7 +99,7 @@ export default function App() {
       {synthetic && view !== 'landing' && <div className="banner" role="note">{t.synth}</div>}
 
       <main id="main">
-        {err && <Card className="err" ><b>{t.genericError}</b><br />{err}<div style={{ marginTop: 10 }}><button className="btn sm" onClick={() => { setErr(''); if (id) analyze(id) }}>{t.retry}</button></div></Card>}
+        {err && <Card className="err" ><b>{t.genericError}</b><br />{err}{id && <div style={{ marginTop: 10 }}><button className="btn sm" onClick={() => { setErr(''); analyze(id) }}>{t.retry}</button></div>}</Card>}
 
         {view === 'landing' && (
           <Landing t={t} onDemo={demo} onUpload={upload} busy={busy} hasData={!!id} onContinue={() => go(step)} />
