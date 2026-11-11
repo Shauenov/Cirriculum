@@ -26,9 +26,9 @@ from ddc.hours import _bounds, analyze_hours  # noqa: E402
 GEN = ROOT / "synthetic_dc" / "code" / "generate_data.py"
 sig = lambda x: 1 / (1 + np.exp(-x))  # noqa: E731
 VARIANTS = {
-    "eb": dict(),                                   # сжатие эмпирическим Байесом (по умолчанию)
-    "pooled": dict(hours_pool=True),                # полное сжатие к линии «сложность → отдача»
-    "pooled_step1": dict(hours_pool=True, hours_max_step=1),
+    "eb": dict(hours_pool=False, hours_max_step=None),        # сжатие эмпирическим Байесом, без ограничения шага
+    "pooled": dict(hours_pool=True, hours_max_step=None),     # полное сжатие к линии «сложность → отдача»
+    "pooled_step1": dict(hours_pool=True, hours_max_step=1),  # то же + шаг не более 1 часа (значения по умолчанию)
 }
 
 
