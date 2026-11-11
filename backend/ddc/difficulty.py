@@ -12,6 +12,7 @@ import pandas as pd
 
 from .config import Config
 from .data_io import Dataset
+from .irt import fit_2pl
 from .panel import build_panel
 
 
@@ -60,6 +61,33 @@ def _school_boot_ci(panel: pd.DataFrame, cfg: Config):
     return {t: (float(np.quantile(v, a)), float(np.quantile(v, 1 - a))) for t, v in out.items()}
 
 
+def _irt_topics(ds: Dataset, cfg: Config, reps: int = 60):
+    """Сложность тем по 2PL IRT (общая шкала способности) + бутстреп по школам (старт с полной оценки)."""
+    r = ds.results
+    M = r.pivot_table(index="student_pseudo_id", columns="task_id", values="score_frac", aggfunc="first")
+    a, b = fit_2pl(M.values)
+    topic_of = r.drop_duplicates("task_id").set_index("task_id").section_or_topic.reindex(M.columns).values
+    school_of = r.drop_duplicates("student_pseudo_id").set_index("student_pseudo_id").school_id.reindex(M.index).values
+    topics = sorted(set(topic_of))
+    point = {t: float(b[topic_of == t].mean()) for t in topics}
+    rng = np.random.default_rng(cfg.seed)
+    schools = np.unique(school_of)
+    rows_of = {s: np.where(school_of == s)[0] for s in schools}
+    draws = {t: [] for t in topics}
+    for _ in range(reps):
+        pick = rng.choice(schools, len(schools), replace=True)
+        idx = np.concatenate([rows_of[s] for s in pick])
+        _, bb = fit_2pl(M.values[idx], n_iter=8, init=(a, b))
+        # якорь шкалы: среднее b по всем заданиям фиксируем на значении полной выборки
+        bb = bb - bb.mean() + b.mean()
+        for t in topics:
+            draws[t].append(bb[topic_of == t].mean())
+    al = (1 - cfg.confidence_level) / 2
+    ci = {t: (float(np.quantile(draws[t], al)), float(np.quantile(draws[t], 1 - al))) for t in topics}
+    items = pd.DataFrame(dict(task_id=M.columns, a=a, b=b))
+    return point, ci, items
+
+
 def analyze_difficulty(ds: Dataset, cfg: Config) -> dict:
     items = item_stats(ds, cfg)
     bad = set(items.loc[items.flagged, "task_id"])
@@ -78,7 +106,11 @@ def analyze_difficulty(ds: Dataset, cfg: Config) -> dict:
             difficulty_all_items=float(1 - g_all[t]), students=int(row.students), schools=int(row.schools),
             items=int(nitems.loc[t, "items"]), flagged_items=int(nitems.loc[t, "flagged"]),
             status="ok" if enough else "insufficient"))
-    topics.sort(key=lambda x: -x["difficulty"])
+    irt_point, irt_ci, irt_items = _irt_topics(ds, cfg)
+    for t in topics:
+        t["difficulty_irt"] = irt_point[t["topic"]]
+        t["irt_ci"] = list(irt_ci[t["topic"]])
+    topics.sort(key=lambda x: -x["difficulty_irt"])
     for i, t in enumerate(topics, 1):
         t["rank"] = i
     heat_tb = None
@@ -90,9 +122,11 @@ def analyze_difficulty(ds: Dataset, cfg: Config) -> dict:
     order = [x["topic"] for x in topics]
     heat_school = dict(columns=order, rows=[dict(school=s, values=[None if pd.isna(v) else float(v) for v in hs.loc[s, order]])
                                             for s in hs.index])
+    items = items.merge(irt_items.rename(columns={"a": "irt_a", "b": "irt_b"}), on="task_id", how="left")
     return dict(topics=topics, items=items.round(4).replace({np.nan: None}).to_dict("records"),
                 heatmap_textbook=heat_tb, heatmap_school=heat_school,
-                method=("Индекс сложности = 1 − средняя доля верных по заданиям без пометки «плохое». "
-                        "Интервал — бутстреп по школам. Для сопоставления заданий из разных работ нужна "
-                        "IRT-калибровка с якорными заданиями (не реализована)."),
+                method=("Ранг и IRT-сложность: модель 2PL (маргинальный максимум правдоподобия), общая шкала способности "
+                        "для всех заданий; сложность темы — среднее b её заданий, интервал — бутстреп по школам (учитывает выборку учеников и школ, но не выбор заданий). "
+                        "Индекс 1 − доля верных (по заданиям без пометки «плохое») показан для наглядности. "
+                        "Для работ, которые решают разные группы учеников, нужны якорные задания (общие для работ)."),
                 n_flagged=int(len(bad)))

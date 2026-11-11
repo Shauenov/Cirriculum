@@ -128,6 +128,7 @@ function DifficultyTab({ t, d }: Any) {
             <b>#{x.rank} {x.topic}</b>
             <div className="big">{x.difficulty.toFixed(2)}</div>
             <div className="muted small">{t.interval}: [{x.ci[0].toFixed(2)}; {x.ci[1].toFixed(2)}]</div>
+            <div className="muted small">IRT b = {x.difficulty_irt.toFixed(2)} [{x.irt_ci[0].toFixed(2)}; {x.irt_ci[1].toFixed(2)}]</div>
             {x.flagged_items > 0 && <div className="warn small">{x.flagged_items} {t.flagged}</div>}
           </div>
         ))}
@@ -149,7 +150,7 @@ function DifficultyTab({ t, d }: Any) {
         <tbody>{d.topics.map((x: Any) => (
           <tr key={x.topic}><td>{x.rank}</td><td>{x.topic}</td>
             <td style={{ width: '40%' }}><div className="bar"><i style={{ width: `${x.difficulty * 100}%` }} /><u style={{ left: `${x.ci[0] * 100}%`, width: `${(x.ci[1] - x.ci[0]) * 100}%` }} /></div></td>
-            <td>{x.difficulty.toFixed(2)}</td></tr>
+            <td>{x.difficulty.toFixed(2)}</td><td className="muted">{x.difficulty_irt.toFixed(2)}</td></tr>
         ))}</tbody>
       </table>
       <button onClick={() => setShowSchools(!showSchools)}>{t.heatSchool}</button>
@@ -206,7 +207,8 @@ function TextbooksTab({ t, d, id }: Any) {
             <td><b>{c.textbook}</b> {t.ppvs} {c.vs}</td><td>{c.schools}/{c.schools_ref}</td>
             <td className="red">{c.naive_diff >= 0 ? '+' : ''}{c.naive_diff.toFixed(1)}</td>
             <td>{c.status === 'insufficient' ? <span className="badge warn">{t.insufficient}</span> : <>{c.estimate.toFixed(1)} [{c.ci[0].toFixed(1)}; {c.ci[1].toFixed(1)}]</>}
-              {c.status === 'tentative' && <div className="warn small">{c.status_text}</div>}</td>
+              {c.status === 'tentative' && <div className="warn small">{c.status_text}</div>}
+              {c.robust && c.status !== 'insufficient' && <div className={'small ' + (c.robust_agrees ? 'muted' : 'warn')}>{t.robust}: {c.robust.estimate.toFixed(1)} [{c.robust.ci[0].toFixed(1)}; {c.robust.ci[1].toFixed(1)}] {c.robust_agrees ? '✓' : '⚠'}</div>}</td>
             <td><button onClick={async () => setWhy(await j(`/why/textbook?id=${id}&textbook=${c.textbook}`))}>{t.why}</button></td>
           </tr>
         ))}</tbody>

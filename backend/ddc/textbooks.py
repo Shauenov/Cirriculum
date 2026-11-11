@@ -50,6 +50,41 @@ def _covariates(panel: pd.DataFrame) -> list[str]:
     return terms
 
 
+def _gee_check(panel: pd.DataFrame, ref: str, others: list[str], cov: list[str], cfg: Config, tbs) -> dict:
+    """Проверка устойчивости: биномиальная logit-модель (GEE, кластеры = школы, поправка Манкла–ДеРуэна
+    для малого числа кластеров). Результат — средний маргинальный эффект в п.п. с симуляционным интервалом."""
+    import statsmodels.api as sm
+    d = panel.dropna(subset=[c for c in ("prior_z",) if c in panel]).reset_index(drop=True)
+    tb_term = TB.format(ref=ref)
+    f = "pct ~ " + " + ".join([tb_term, "C(topic)"] + cov)
+    try:
+        m = smf.gee(f, groups="school_id", data=d, family=sm.families.Binomial()).fit(cov_type="bias_reduced")
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+    rng = np.random.default_rng(cfg.seed)
+    V = np.asarray(m.cov_params())
+    beta = np.asarray(m.params)
+    draws = rng.multivariate_normal(beta, V, size=300)
+    names = list(m.params.index)
+    out = {}
+    sub = d.sample(min(len(d), 6000), random_state=cfg.seed)
+    for tb in others:
+        d0, d1 = sub.copy(), sub.copy()
+        d0["textbook_id"], d1["textbook_id"] = ref, tb
+        di = m.model.data.model_spec.design_info if hasattr(m.model.data, "model_spec") else m.model.data.design_info
+        import patsy
+        X0 = np.asarray(patsy.build_design_matrices([di], d0)[0])
+        X1 = np.asarray(patsy.build_design_matrices([di], d1)[0])
+        sig = lambda z: 1 / (1 + np.exp(-z))  # noqa: E731
+        ame = np.array([(sig(X1 @ b) - sig(X0 @ b)).mean() * 100 for b in draws])
+        est = float((sig(X1 @ beta) - sig(X0 @ beta)).mean() * 100)
+        df = max(1, min(tbs[tb], tbs[ref]) - 1)
+        tcrit = stats.t.ppf(1 - (1 - cfg.confidence_level) / 2, df)
+        se = float(ame.std(ddof=1))
+        out[tb] = dict(estimate=est, ci=[est - tcrit * se, est + tcrit * se], se=se)
+    return out
+
+
 def analyze_textbooks(ds: Dataset, cfg: Config) -> dict:
     if ds.teaching is None:
         return dict(available=False, reason="Нет файла teaching (учебник по классу).")
@@ -83,6 +118,13 @@ def analyze_textbooks(ds: Dataset, cfg: Config) -> dict:
                         schools=int(tbs[tb]), schools_ref=int(tbs[ref]), status=st, status_text=msg,
                         naive_diff=float(naive[tb] - naive[ref]),
                         significant=bool(st != "insufficient" and (b - tcrit * se > 0 or b + tcrit * se < 0))))
+    gee = _gee_check(panel, ref, others, cov, cfg, tbs) if adjusted else {}
+    for r in res:
+        g = gee.get(r["textbook"])
+        if g:
+            r["robust"] = g
+            r["robust_agrees"] = bool((g["estimate"] > 0) == (r["estimate"] > 0) and
+                                      g["ci"][0] <= r["ci"][1] and r["ci"][0] <= g["ci"][1])
     table = [dict(textbook=t, schools=int(tbs[t]), students=int(panel[panel.textbook_id == t].student_pseudo_id.nunique()),
                   naive_mean=float(naive[t])) for t in tbs.index]
 
@@ -129,6 +171,7 @@ def analyze_textbooks(ds: Dataset, cfg: Config) -> dict:
         method=(f"Смешанная линейная модель: доля верных ~ учебник + тема + входной уровень ученика + средний "
                 f"входной уровень школы (Mundlak) + язык + тип местности + стаж учителя; случайный эффект школы. "
                 f"Эталон — учебник {ref}. Интервалы: t-распределение, df = min(число школ) − 1. "
+                f"Проверка устойчивости: биномиальная logit-модель (GEE, поправка Манкла–ДеРуэна для малого числа школ). "
                 f"По темам: поправка Бенджамини–Хохберга (FDR)."),
         caveat=("Это разница с поправкой на наблюдаемые характеристики, а не причинный эффект учебника: "
                 "ненаблюдаемые различия школ могут оставаться. Сравнение возможно только межшкольное."),

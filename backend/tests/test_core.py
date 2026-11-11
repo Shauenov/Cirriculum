@@ -69,6 +69,47 @@ def test_difficulty_rank_correlation(seed2026):
     assert rho >= 0.7
 
 
+def test_irt_recovers_item_parameters(seed2026):
+    d, ds = seed2026
+    from ddc.irt import topic_irt
+    items, _ = topic_irt(ds)
+    t = truth(d)
+    b = items.set_index("task_id").b
+    assert np.corrcoef(b, pd.Series(t["task_difficulty"]).reindex(b.index))[0, 1] > 0.98
+    assert np.corrcoef(items.a, pd.Series(t["task_discrimination"]).reindex(items.task_id))[0, 1] > 0.9
+
+
+def test_irt_topic_rank_beats_threshold(seed2026):
+    from scipy.stats import spearmanr
+    d, ds = seed2026
+    r = analyze_difficulty(ds, Config(bootstrap_reps=10))
+    names = ds.items.drop_duplicates("topic_id").set_index("section_or_topic").topic_id
+    tt = truth(d)["topic_difficulty"]
+    rho = spearmanr([x["difficulty_irt"] for x in r["topics"]], [tt[names[x["topic"]]] for x in r["topics"]]).statistic
+    assert rho >= 0.9
+    assert all(x["irt_ci"][0] <= x["difficulty_irt"] <= x["irt_ci"][1] for x in r["topics"])
+
+
+def test_robust_logit_check_agrees(seed2026):
+    d, ds = seed2026
+    res = analyze_textbooks(ds, CFG)
+    tr = true_pp(d, ds)
+    for c in res["comparisons"]:
+        assert c["robust_agrees"]
+        assert c["robust"]["ci"][0] <= tr[c["textbook"]] - tr[res["reference"]] <= c["robust"]["ci"][1]
+
+
+def test_irt_handles_missing_responses():
+    from ddc.irt import fit_2pl
+    rng = np.random.default_rng(0)
+    th = rng.normal(size=1500)
+    b = np.linspace(-1.5, 1.5, 20)
+    Y = (rng.random((1500, 20)) < 1 / (1 + np.exp(-(th[:, None] - b[None, :])))).astype(float)
+    Y[rng.random(Y.shape) < 0.2] = np.nan
+    a, bh = fit_2pl(Y)
+    assert np.corrcoef(bh, b)[0, 1] > 0.98
+
+
 def test_topic_exceptions_found_with_fdr(seed2026):
     d, ds = seed2026
     res = analyze_textbooks(ds, CFG)
@@ -168,3 +209,11 @@ def test_hours_confounding_scenario_documented(tmp_path):
         res[tilt] = dict(corr=float(np.corrcoef(est, true_beta)[0, 1]), mean=float(est.mean()))
     print("CALIBRATION", res)
     assert set(res) == {0.0, 0.5}
+
+
+def test_full_pipeline_runs_on_small_demo():
+    """Регрессия: на резервном наборе бутстреп-выборка может потерять категорию — расчёт не должен падать."""
+    from ddc.pipeline import load_demo, run_all
+    res = run_all(load_demo("small"), Config(bootstrap_reps=40))
+    assert res["hours"]["available"] and res["textbooks"]["available"]
+    assert all("difficulty_irt" in t for t in res["difficulty"]["topics"])

@@ -48,6 +48,8 @@ def shrink(betas: dict[str, float], ses: dict[str, float], x: dict[str, float] |
     """Эмпирико-байесовское сжатие. Цель сжатия — линейная функция сложности темы (мета-регрессия),
     если сложность известна, иначе общее среднее. Отрицательные отдачи обнуляем (отдача неотрицательна)."""
     t = [k for k, v in betas.items() if not np.isnan(v)]
+    if not t:
+        return {k: 0.0 for k in betas}
     b = np.array([betas[k] for k in t])
     sevals = [v for v in ses.values() if not np.isnan(v)]
     s2 = np.array([(ses.get(k) if not np.isnan(ses.get(k, np.nan)) else np.mean(sevals)) ** 2 for k in t])
@@ -148,10 +150,9 @@ def analyze_hours(ds: Dataset, cfg: Config, difficulty: dict | None = None) -> d
                 row[t] = np.nan
                 continue
             X, y, g, k = prep[t]
-            w = mult[g]
-            XtW = X.T * w
-            try:
-                row[t] = float(np.linalg.solve(XtW @ X, XtW @ y)[k])
+            sw = np.sqrt(mult[g])
+            try:   # lstsq устойчив к вырожденным кодировкам, если категория выпала из бутстреп-выборки
+                row[t] = float(np.linalg.lstsq(X * sw[:, None], y * sw, rcond=None)[0][k])
             except np.linalg.LinAlgError:
                 row[t] = np.nan
         boots.append(row)
