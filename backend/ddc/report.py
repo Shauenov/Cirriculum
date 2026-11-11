@@ -15,7 +15,7 @@ from pathlib import Path
 L = {
     "ru": dict(
         title="Аналитическая записка для методсовета", synth="СИНТЕТИЧЕСКИЕ ДАННЫЕ. Реальных школ и учеников нет.",
-        summary="Резюме", valid="Проверка метода", hard="Сложные для усвоения темы", tb="Сравнение учебников", hours="Сценарий распределения часов",
+        summary="Резюме", ranked="ранжирование", valid="Проверка метода", hard="Сложные для усвоения темы", tb="Сравнение учебников", hours="Сценарий распределения часов",
         limits="Ограничения", topic="Тема", diff="Индекс сложности", ci="Интервал", est="Оценка с поправкой, п.п.",
         naive="Наивная разница, п.п.", schools="Школ", status="Статус", cur="Сейчас", rec="Рекомендуется", rng="Диапазон",
         insufficient="Недостаточно данных для утверждения", gain="Ожидаемый прирост средней доли верных, п.п.",
@@ -24,7 +24,7 @@ L = {
     ),
     "kz": dict(
         title="Әдістемелік кеңеске арналған талдамалық жазба", synth="СИНТЕТИКАЛЫҚ ДЕРЕКТЕР. Нақты мектептер мен оқушылар жоқ.",
-        summary="Қорытынды", valid="Әдісті тексеру", hard="Меңгеруге қиын тақырыптар", tb="Оқулықтарды салыстыру", hours="Сағаттарды бөлу сценарийі",
+        summary="Қорытынды", ranked="рангілеу", valid="Әдісті тексеру", hard="Меңгеруге қиын тақырыптар", tb="Оқулықтарды салыстыру", hours="Сағаттарды бөлу сценарийі",
         limits="Шектеулер", topic="Тақырып", diff="Күрделілік индексі", ci="Аралық", est="Түзетілген бағалау, п.т.",
         naive="Қарапайым айырма, п.т.", schools="Мектеп", status="Мәртебе", cur="Қазір", rec="Ұсынылады", rng="Диапазон",
         insufficient="Растау үшін деректер жеткіліксіз", gain="Дұрыс жауаптың орташа үлесінің күтілетін өсімі, п.т.",
@@ -156,7 +156,8 @@ def build_blocks(res: dict, lang: str = "ru", use_llm: bool = True) -> dict:
     t = L[lang]
     tpl = _summary_template(res, lang)
     summary, src = llm_summary(res, lang, tpl) if use_llm else (tpl, "template")
-    tops = [[x["topic"], f"{x['difficulty']:.2f}", f"[{x['ci'][0]:.2f}; {x['ci'][1]:.2f}]"] for x in res["difficulty"]["topics"][:6]]
+    tops = [[x["topic"], f"{x['difficulty']:.2f}", f"[{x['ci'][0]:.2f}; {x['ci'][1]:.2f}]",
+             f"{x['difficulty_irt']:.2f} [{x['irt_ci'][0]:.2f}; {x['irt_ci'][1]:.2f}]"] for x in res["difficulty"]["topics"][:6]]
     tb_rows = []
     tb = res["textbooks"]
     if tb.get("available"):
@@ -200,7 +201,7 @@ def to_docx(res: dict, lang: str = "ru", use_llm: bool = True) -> bytes:
             for i, v in enumerate(r):
                 cells[i].text = str(v)
     doc.add_heading(t["hard"], 1)
-    table([t["topic"], t["diff"], t["ci"]], b["tops"])
+    table([t["topic"], t["diff"], t["ci"], "IRT b (" + t["ranked"] + ")"], b["tops"])
     doc.add_heading(t["tb"], 1)
     doc.add_paragraph(t["tb_intro"])
     table(["", t["est"], t["naive"], t["schools"], t["status"]], b["tb_rows"])
@@ -259,7 +260,7 @@ def to_pdf(res: dict, lang: str = "ru", use_llm: bool = True) -> bytes:
         tt.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.grey), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef7"))]))
         el.extend([tt, Spacer(1, 6)])
     el += [Paragraph(t["summary"], h1), Paragraph(b["summary"], body), Paragraph(t["hard"], h1)]
-    tbl([t["topic"], t["diff"], t["ci"]], b["tops"])
+    tbl([t["topic"], t["diff"], t["ci"], "IRT b (" + t["ranked"] + ")"], b["tops"])
     el += [Paragraph(t["tb"], h1), Paragraph(t["tb_intro"], body), Spacer(1, 4)]
     tbl(["", t["est"], t["naive"], t["schools"], t["status"]], b["tb_rows"])
     el += [Paragraph(t["hours"], h1), Paragraph(b["hours_text"], body), Spacer(1, 4)]

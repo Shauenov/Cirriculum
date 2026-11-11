@@ -9,6 +9,7 @@ pip install -r backend/requirements.txt
 python -m uvicorn ddc.api:app --app-dir backend --port 8000
 cd frontend && npm install && npm run dev        # http://localhost:5173
 ```
+Сервер при старте прогревает оба демо-набора в фоне (~1,5 мин; `GET /health` показывает `warm`), после этого «Демо» открывается мгновенно.
 Тесты: `cd backend && python -m pytest` (быстрые), `python -m pytest -m slow tests/test_multiseed.py` (15 наборов данных).
 Генератор и исходные данные: `synthetic_dc/`. Аналитические модули истину (`ground_truth.json`) не читают, её читают только тесты.
 

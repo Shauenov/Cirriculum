@@ -124,7 +124,7 @@ def set_config(id: str, body: dict):
 
 @app.get("/health")
 def health():
-    return dict(ok=True)
+    return dict(ok=True, warm=sorted(PRE))
 
 
 @app.post("/import")
@@ -137,12 +137,20 @@ async def import_files(files: list[UploadFile] = File(...)):
     return _register(ds)
 
 
+PRE: dict[str, dict] = {}     # прогретые демо-наборы: имя -> запись с готовым кешем
+DEMO_SUB = {"main": "", "small": "small"}
+
+
 @app.post("/demo/{name}")
 def demo(name: str):
-    sub = {"main": "", "small": "small"}.get(name)
-    if sub is None:
+    if name not in DEMO_SUB:
         raise HTTPException(404, "Доступны наборы: main, small")
-    return _register(load_demo(sub))
+    if name in PRE:      # быстрый путь: анализ уже посчитан при старте сервера
+        src = PRE[name]
+        did = uuid.uuid4().hex[:10]
+        STORE[did] = dict(ds=src["ds"], cfg=Config(), cache=dict(src["cache"]))
+        return dict(id=did, quality=src["ds"].quality.to_dict(), synthetic=True)
+    return _register(load_demo(DEMO_SUB[name]))
 
 
 def _difficulty(e):
@@ -230,3 +238,21 @@ def report(id: str, lang: str = "ru", fmt: str = "docx", llm: bool = True):
     mt = ("application/vnd.openxmlformats-officedocument.wordprocessingml.document" if fmt == "docx"
           else "application/pdf")
     return Response(data, media_type=mt, headers={"Content-Disposition": f'attachment; filename="note_{lang}.{fmt}"'})
+
+
+def _warm():
+    for name in ("small", "main"):
+        try:
+            e = dict(ds=load_demo(DEMO_SUB[name]), cfg=Config(), cache={})
+            _difficulty(e)
+            _textbooks(e)
+            _hours(e)
+            e["cache"]["dif"] = analyze_dif(e["ds"], e["cfg"])
+            PRE[name] = e
+        except Exception:  # noqa: BLE001
+            pass
+
+
+@app.on_event("startup")
+def _startup():
+    threading.Thread(target=_warm, daemon=True).start()
