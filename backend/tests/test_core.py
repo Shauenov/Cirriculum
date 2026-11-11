@@ -33,7 +33,7 @@ def true_pp(d, ds):
             vals.append(np.mean([sigmoid(a[k] * (grid + extra - b[k])).mean() for k in tasks]))
         return np.mean(vals) * 100
     base = pct("B")
-    return {tb: pct(tb) - base for tb in "AC"}
+    return {tb: pct(tb) - base for tb in "ABC"}
 
 
 # ---------- воспроизводимость и качество на seed 2026 ----------

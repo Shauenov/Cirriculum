@@ -21,10 +21,12 @@ def test_15_seeds(tmp_path_factory):
         ds = load_dir(d)
         tb = analyze_textbooks(ds, CFG)
         tr = true_pp(d, ds)
+        ref = tb["reference"]
         comp = {c["textbook"]: c for c in tb["comparisons"]}
-        cover += all(comp[t]["ci"][0] <= tr[t] <= comp[t]["ci"][1] for t in "AC")
-        best_naive = max(comp, key=lambda t: comp[t]["naive_diff"])
-        naive_wrong += (comp["A"]["naive_diff"] > 0 > tr["A"]) or best_naive != "C"
+        rel = {t: tr[t] - tr[ref] for t in comp}
+        cover += all(comp[t]["ci"][0] <= rel[t] <= comp[t]["ci"][1] for t in comp)
+        naive_means = {r["textbook"]: r["naive_mean"] for r in tb["table"]}
+        naive_wrong += max(naive_means, key=naive_means.get) != max(tr, key=tr.get)
         diff = analyze_difficulty(ds, CFG)
         est = {t["topic"]: t["difficulty"] for t in diff["topics"]}
         names = ds.items.drop_duplicates("topic_id").set_index("section_or_topic").topic_id
