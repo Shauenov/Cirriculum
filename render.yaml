@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ddc-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    plan: standard          # нужно ~2 ГБ ОЗУ: расчёт на 60 школ. Для free/starter ставьте DDC_WARM=small
+    envVars:
+      - key: DDC_WARM
+        value: small,main
+      - key: OPENROUTER_API_KEY
+        sync: false           # вставить вручную в панели Render; необязателен

@@ -1,4 +1,5 @@
-export const API = '/api'
+// В разработке запросы идут через прокси Vite (/api), в продакшене — на адрес бэкенда из VITE_API_URL
+export const API = ((import.meta.env.VITE_API_URL as string | undefined) ?? '/api').replace(/\/$/, '')
 
 export async function j(url: string, init?: RequestInit) {
   const r = await fetch(API + url, init)

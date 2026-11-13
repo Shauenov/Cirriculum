@@ -1,6 +1,7 @@
 """FastAPI: /import, /analyze/difficulty, /analyze/textbooks, /optimize/hours, /report."""
 from __future__ import annotations
 
+import os
 import threading
 import uuid
 from typing import Optional
@@ -266,7 +267,8 @@ def report(id: str, lang: str = "ru", fmt: str = "docx", llm: bool = True):
 
 
 def _warm():
-    for name in ("small", "main"):
+    # DDC_WARM="small" — на хостинге с малой памятью прогреваем только лёгкий набор
+    for name in [n.strip() for n in os.environ.get("DDC_WARM", "small,main").split(",") if n.strip() in DEMO_SUB]:
         try:
             e = dict(ds=load_demo(DEMO_SUB[name]), cfg=Config(), cache={})
             _difficulty(e)

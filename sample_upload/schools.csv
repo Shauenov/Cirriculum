@@ -1,0 +1,16 @@
+school_id,school_type,locality_type,instruction_language
+S002,elite,city,ru
+S009,elite,city,ru
+S012,elite,city,ru
+S014,urban,city,kz
+S016,urban,city,ru
+S018,urban,city,kz
+S019,urban,city,ru
+S022,urban,city,ru
+S024,urban,city,kz
+S026,urban,city,ru
+S030,urban,city,ru
+S031,urban,city,ru
+S036,urban,city,ru
+S041,rural,village,kz
+S054,rural,village,kz

@@ -65,8 +65,10 @@ function Settings({ t, id, reanalyze, busy }: { t: Tr; id: string; reanalyze: (i
       <p>{t.settingsNote}</p>
       <div className="grid g3">
         {keys.map((k) => (
-          <label key={k} className="field">{k}
+          <label key={k} className="field"><b>{t.cfg[k]?.[0] ?? k}</b>
             <input type="number" step="any" min={cfg.editable[k][0]} max={cfg.editable[k][1]} value={draft[k] ?? ''} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} />
+            {t.cfg[k] && <span className="faint small" style={{ fontWeight: 400 }}>{t.cfg[k][1]}</span>}
+            <span className="faint small" style={{ fontWeight: 400 }}>{t.settingsRange.replace('{lo}', String(cfg.editable[k][0]).replace('.', ',')).replace('{hi}', String(cfg.editable[k][1]).replace('.', ','))}</span>
           </label>
         ))}
       </div>
