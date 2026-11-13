@@ -217,6 +217,55 @@ export function Why({ t, w, close }: { t: Tr; w: Any; close: () => void }) {
   )
 }
 
+function TbOverview({ t, d, trust }: { t: Tr; d: Any; trust: (s: string) => React.ReactNode }) {
+  const names: string[] = d.table.map((r: Any) => r.textbook)
+  const [base, setBase] = useState<string>(d.reference)
+  const pair = (a: string, b: string) => d.pairs.find((p: Any) => p.a === a && p.b === b)
+  return (
+    <Card>
+      <h2 className="h2" style={{ margin: 0 }}>{t.listTitle}</h2>
+      <p className="muted small">{t.listNote}</p>
+      <div className="row" role="group" aria-label={t.baseLabel} style={{ margin: '10px 0' }}>
+        <span className="muted small">{t.baseLabel}:</span>
+        {names.map((n) => <button key={n} className={`btn sm ${n === base ? 'primary' : ''}`} aria-pressed={n === base} onClick={() => setBase(n)}>{n}</button>)}
+      </div>
+      <div className="tbl-wrap"><table>
+        <thead><tr><th>{t.tbCol}</th><th>{t.schoolsCol}</th><th>{t.studentsCol}</th><th>{t.meanCol}</th><th>{t.vsCol} {base}</th><th>{t.statusCol}</th></tr></thead>
+        <tbody>{d.table.map((r: Any) => {
+          const p = r.textbook === base ? null : pair(r.textbook, base)
+          return (
+            <tr key={r.textbook} className={r.textbook === base ? 'hl' : ''}>
+              <td><b>{r.textbook}</b></td><td>{r.schools}</td><td>{r.students}</td><td>{f1(r.naive_mean)}</td>
+              <td>{p ? (p.status === 'insufficient' ? <span className="faint">—</span> : <><b>{sg(p.estimate)}</b> <span className="faint small">[{sg(p.ci[0])}; {sg(p.ci[1])}]</span></>) : <span className="faint">{t.baseSelf}</span>}</td>
+              <td>{p ? trust(p.status) : null}</td>
+            </tr>
+          )
+        })}</tbody>
+      </table></div>
+
+      <h3 className="h2" style={{ marginTop: 22 }}>{t.matrixTitle}</h3>
+      <p className="muted small">{t.matrixNote}</p>
+      <div className="tbl-wrap"><table>
+        <thead><tr><th />{names.map((n) => <th key={n}>{n}</th>)}</tr></thead>
+        <tbody>{names.map((a) => (
+          <tr key={a}><td><b>{a}</b></td>{names.map((b) => {
+            if (a === b) return <td key={b} className="faint">·</td>
+            const p = pair(a, b)
+            if (!p || p.status === 'insufficient') return <td key={b} className="faint" title={p?.status_text}>—</td>
+            const color = !p.significant ? undefined : p.estimate > 0 ? 'var(--ok)' : '#fb7185'
+            return (
+              <td key={b} title={`[${sg(p.ci[0])}; ${sg(p.ci[1])}] ${t.pp}`}
+                style={{ color, fontWeight: p.significant ? 700 : 400, outline: p.significant ? `1px solid ${color}` : undefined, outlineOffset: -3, borderRadius: 8 }}>
+                {sg(p.estimate)}
+              </td>
+            )
+          })}</tr>
+        ))}</tbody>
+      </table></div>
+    </Card>
+  )
+}
+
 export function StepTextbooks({ t, d, id }: { t: Tr; d: Any; id: string }) {
   const [why, setWhy] = useState<Any>(null)
   if (!d.available) return <Card className="err">{t.noTb}<br /><span className="muted small">{d.reason}</span></Card>
@@ -268,6 +317,8 @@ export function StepTextbooks({ t, d, id }: { t: Tr; d: Any; id: string }) {
         <div className="forest-wrap"><Forest rows={rows} lo={lo} hi={hi} /></div>
         <div className="row small muted"><span style={{ color: '#fb7185' }}>● {t.naiveLabel}</span><span style={{ color: '#5eead4' }}>● {t.adjLabel}</span></div>
       </Card>
+
+      {d.pairs && <TbOverview t={t} d={d} trust={trust} />}
 
       {d.simpson && (
         <Card>

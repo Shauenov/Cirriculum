@@ -47,6 +47,23 @@ def test_seed2026_reproduces_report(seed2026):
     assert comp["A"]["naive_diff"] == pytest.approx(8.7, abs=0.1)
 
 
+def test_pairwise_matrix_is_consistent(seed2026):
+    d, ds = seed2026
+    res = analyze_textbooks(ds, CFG)
+    pr = {(p["a"], p["b"]): p for p in res["pairs"]}
+    assert len(pr) == 6                                              # все упорядоченные пары из трёх учебников
+    ref = res["reference"]
+    comp = {c["textbook"]: c for c in res["comparisons"]}
+    for tb, c in comp.items():                                       # пары с эталоном совпадают с основным сравнением
+        assert pr[(tb, ref)]["estimate"] == pytest.approx(c["estimate"], abs=1e-6)
+    for (a, b), p in pr.items():                                     # антисимметрия и интервал переворачивается
+        q = pr[(b, a)]
+        assert q["estimate"] == pytest.approx(-p["estimate"], abs=1e-6)
+        assert q["ci"][0] == pytest.approx(-p["ci"][1], abs=1e-6)
+    a, c_ = [t for t in comp if t != ref][:2]                        # транзитивность оценок
+    assert pr[(a, c_)]["estimate"] == pytest.approx(comp[a]["estimate"] - comp[c_]["estimate"], abs=1e-6)
+
+
 def test_naive_wrong_model_right_seed2026(seed2026):
     d, ds = seed2026
     res = analyze_textbooks(ds, CFG)

@@ -120,6 +120,35 @@ def analyze_textbooks(ds: Dataset, cfg: Config) -> dict:
                         schools=int(tbs[tb]), schools_ref=int(tbs[ref]), status=st, status_text=msg,
                         naive_diff=float(naive[tb] - naive[ref]),
                         significant=bool(st != "insufficient" and (b - tcrit * se > 0 or b + tcrit * se < 0))))
+    # Попарные сравнения «каждый с каждым» из той же модели: разность коэффициентов, дисперсия через ковариацию.
+    keys = {tb: f"{tb_term}[T.{tb}]" for tb in others}
+    cp = m.cov_params()
+    pairs = []
+    for a in tbs.index:
+        for b_ in tbs.index:
+            if a == b_:
+                continue
+            ca = m.params[keys[a]] if a != ref else 0.0
+            cb = m.params[keys[b_]] if b_ != ref else 0.0
+            L = {k: 0.0 for k in keys.values()}
+            if a != ref:
+                L[keys[a]] += 1.0
+            if b_ != ref:
+                L[keys[b_]] -= 1.0
+            ks = list(L)
+            v = np.array([L[k] for k in ks])
+            var = float(v @ cp.loc[ks, ks].values @ v)
+            est, se_ = (ca - cb) * 100, float(np.sqrt(max(var, 0.0))) * 100
+            n_min = int(min(tbs[a], tbs[b_]))
+            tc = stats.t.ppf(1 - (1 - cfg.confidence_level) / 2, max(1, n_min - 1))
+            st_, msg_ = _status(n_min, cfg)
+            if not adjusted:
+                st_, msg_ = "insufficient", "Нет входного уровня учеников (файл students): поправка невозможна"
+            lo_, hi_ = est - tc * se_, est + tc * se_
+            pairs.append(dict(a=a, b=b_, estimate=float(est), ci=[float(lo_), float(hi_)], status=st_, status_text=msg_,
+                              schools_a=int(tbs[a]), schools_b=int(tbs[b_]), naive_diff=float(naive[a] - naive[b_]),
+                              significant=bool(st_ != "insufficient" and (lo_ > 0 or hi_ < 0))))
+
     gee = _gee_check(panel, ref, others, cov, cfg, tbs) if adjusted else {}
     for r in res:
         g = gee.get(r["textbook"])
@@ -182,7 +211,7 @@ def analyze_textbooks(ds: Dataset, cfg: Config) -> dict:
     rows.sort(key=lambda r: -abs(r["deviation"]))
 
     return dict(
-        available=True, reference=ref, adjusted=adjusted, table=table, comparisons=res, simpson=simpson,
+        available=True, reference=ref, adjusted=adjusted, table=table, comparisons=res, pairs=pairs, simpson=simpson,
         topic_effects=rows, warnings=warnings_,
         covariates=[c for c in cov],
         method=(f"Смешанная линейная модель: доля верных ~ учебник + тема + входной уровень ученика + средний "
